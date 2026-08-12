@@ -1,0 +1,2 @@
+# Placeholder so Git tracks the output directory structure.
+# Actual output files (traces, runs, evaluations) are ignored by .gitignore.

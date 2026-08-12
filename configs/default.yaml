@@ -1,0 +1,42 @@
+agent:
+  default_type: react
+  max_steps: ${AGENT_MAX_STEPS:-10}
+  step_timeout_seconds: ${STEP_TIMEOUT_SECONDS:-60}
+llm:
+  default_provider: openai
+  default_model: ${OPENAI_MODEL:-tju-llm}
+  temperature: 0.8
+  max_tokens: ${LLM_MAX_TOKENS:-2000}
+  retry:
+    max_attempts: 3
+    backoff_factor: 2.0
+pricing:
+  tju-llm:
+    prompt: ${PRICING_TJU_LLM_PROMPT:-0.0}
+    completion: ${PRICING_TJU_LLM_COMPLETION:-0.0}
+  gpt-4o-mini:
+    prompt: ${PRICING_GPT_4O_MINI_PROMPT:-0.00015}
+    completion: ${PRICING_GPT_4O_MINI_COMPLETION:-0.0006}
+  gpt-4o:
+    prompt: ${PRICING_GPT_4O_PROMPT:-0.005}
+    completion: ${PRICING_GPT_4O_COMPLETION:-0.015}
+storage:
+  backend: jsonl
+  output_dir: ${OUTPUT_DIR:-./outputs}
+  trace_dir: ${TRACE_DIR:-./outputs/traces}
+  run_dir: ${RUN_DIR:-./outputs/runs}
+  eval_dir: ${EVAL_DIR:-./outputs/evaluations}
+evaluation:
+  default_evaluators:
+  - success_rate
+  - tool_usage
+  - latency
+  - token_cost
+  - answer_quality_keyword
+  quality:
+    keyword_match_threshold: 0.6
+  judge:
+    enabled: ${JUDGE_ENABLED:-false}
+    model: ${JUDGE_MODEL:-tju-llm}
+    temperature: ${JUDGE_TEMPERATURE:-0.1}
+    max_tokens: ${JUDGE_MAX_TOKENS:-1500}
