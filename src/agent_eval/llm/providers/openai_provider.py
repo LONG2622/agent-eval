@@ -7,7 +7,7 @@ import os
 import time
 from typing import Any
 
-from agent_eval.config import load_config
+from agent_eval.config import get_model_profile, load_config
 from agent_eval.llm.messages import Message
 from agent_eval.llm.providers.base import LLMCallOptions, LLMProvider, LLMResponse
 from agent_eval.llm.tokenizer import calculate_cost, count_tokens_breakdown
@@ -23,23 +23,41 @@ class OpenAIProvider(LLMProvider):
         api_key: str | None = None,
         base_url: str | None = None,
     ) -> None:
-        self._api_key = api_key or os.environ.get("OPENAI_API_KEY", "")
-        self._base_url = base_url or os.environ.get("OPENAI_BASE_URL")
-        self._client = None
+        self._default_api_key = api_key or os.environ.get("OPENAI_API_KEY", "")
+        self._default_base_url = base_url or os.environ.get("OPENAI_BASE_URL")
+        # Cache of {cache_key: OpenAI client} for quick reuse across models/endpoints
+        self._clients: dict[str, Any] = {}
 
-    def _get_client(self):
-        if self._client is None:
-            try:
-                from openai import OpenAI
-            except ImportError as e:
-                raise RuntimeError(
-                    "openai package is required. Install with: pip install 'openai>=1.0'"
-                ) from e
-            kwargs: dict[str, Any] = {"api_key": self._api_key}
-            if self._base_url:
-                kwargs["base_url"] = self._base_url
-            self._client = OpenAI(**kwargs)
-        return self._client
+    def _client_for_model(self, model: str) -> tuple[Any, str, str]:
+        """Return (openai_client, effective_api_key, effective_base_url) for a model.
+
+        If a registered profile exists for the model, that profile's key/base_url
+        are used; otherwise fall back to the constructor defaults (OPENAI_*).
+        """
+        profile = get_model_profile(model)
+        if profile and (profile.api_key or profile.base_url):
+            api_key = profile.api_key or self._default_api_key
+            base_url = profile.base_url or self._default_base_url or ""
+        else:
+            api_key = self._default_api_key
+            base_url = self._default_base_url or ""
+
+        cache_key = f"{api_key[-6:]}|{base_url}|{profile.provider if profile else 'openai'}"
+        if cache_key in self._clients:
+            return self._clients[cache_key], api_key, base_url
+
+        try:
+            from openai import OpenAI
+        except ImportError as e:
+            raise RuntimeError(
+                "openai package is required. Install with: pip install 'openai>=1.0'"
+            ) from e
+        kwargs: dict[str, Any] = {"api_key": api_key}
+        if base_url:
+            kwargs["base_url"] = base_url
+        client = OpenAI(**kwargs)
+        self._clients[cache_key] = client
+        return client, api_key, base_url
 
     def chat(
         self,
@@ -86,7 +104,7 @@ class OpenAIProvider(LLMProvider):
         max_tokens: int,
         options: LLMCallOptions,
     ) -> LLMResponse:
-        client = self._get_client()
+        client, _api_key, _base_url = self._client_for_model(model)
         started = time.perf_counter()
 
         create_kwargs: dict[str, Any] = {

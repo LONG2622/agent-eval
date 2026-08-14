@@ -509,5 +509,21 @@ def serve_cmd(
         raise typer.Exit(code=1)
 
 
+# ============================================================
+# agent errors (Error Classification)
+# ============================================================
+
+@app.command("errors", help="Classify and summarize failed runs by error type.")
+def errors_cmd(
+    limit: int = typer.Option(0, "--limit", "-n", help="Max recent errors to show (0=all)."),
+) -> None:
+    from agent_eval.evaluation.error_classifier import classify_all_runs, format_summary_text
+    from agent_eval.trace.storage import JSONLStorage
+
+    storage = JSONLStorage()
+    summary = classify_all_runs(storage, limit=limit)
+    console.print(format_summary_text(summary))
+
+
 if __name__ == "__main__":
     app()

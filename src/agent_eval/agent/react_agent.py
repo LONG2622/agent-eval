@@ -34,12 +34,18 @@ You have access to a set of tools. On each step you should:
    - To use a tool: call the tool function with appropriate parameters.
    - To finish: respond with your final answer WITHOUT calling any tools.
 
-Rules:
+CRITICAL RULES:
+- Respond in the SAME LANGUAGE as the user's question.
+- Your final answer MUST be a direct answer to the user. NEVER include your internal reasoning, "Thought:", "Action:", or any step-by-step thinking in the final answer.
+- After receiving tool results, you MUST try to produce a final answer. Only use more tools if you genuinely need more information.
+- MAXIMUM 3 tool calls total. After 3 tool calls, you MUST give a final answer using all available information.
 - Be concise in thoughts.
 - Use tools whenever external information or computation is needed.
 - If you are confident you can answer directly, do so as the final answer.
 - If a tool returns unexpected results, adjust your reasoning and try again.
 - Never output more than one Action per step.
+- When you have enough information to answer, ALWAYS give the final answer instead of calling more tools.
+- If asked what model you are, honestly state your model name and provider.
 """
 
 
@@ -65,7 +71,16 @@ class ReActAgent(BaseAgent):
     agent_type: str = "react"
 
     def setup(self) -> None:
-        self._use_function_calling = len(self.tools.list_tools()) > 0
+        # Fall back to scratchpad mode when the selected model explicitly does NOT
+        # support function calling (e.g. Qwen 2.5 Coder on NVIDIA) to avoid malformed
+        # tool-call responses leaking into the final answer.
+        from agent_eval.config import get_model_profile
+
+        profile = get_model_profile(self.config.model) if self.config.model else None
+        if profile and not profile.supports_function_calling:
+            self._use_function_calling = False
+        else:
+            self._use_function_calling = len(self.tools.list_tools()) > 0
 
     def run(self, task: str) -> tuple[str, RunRecord]:
         run = self._make_run(task)
@@ -74,16 +89,16 @@ class ReActAgent(BaseAgent):
         messages: list[Message] = self._build_initial_messages(task)
 
         final_answer: str | None = None
+        tool_call_count = 0
         try:
             for step in range(1, self.config.max_steps + 1):
                 run.total_steps = step
                 thought_text, message, is_final = self._reason_step(step, messages, run)
 
                 if is_final or message.role == Role.ASSISTANT and not message.tool_calls:
-                    # Either a forced final answer or a pure assistant message.
                     content = message.content or ""
                     if content.strip():
-                        final_answer = content.strip()
+                        final_answer = self._clean_final_answer(content)
                     if not final_answer:
                         final_answer = "(Agent returned empty final answer)"
                     messages.append(message)
@@ -95,6 +110,7 @@ class ReActAgent(BaseAgent):
                 action_desc = self._describe_action(message)
                 observations: list[str] = []
                 for tc in message.tool_calls or []:
+                    tool_call_count += 1
                     tool_name = tc.name
                     arguments = tc.arguments or {}
                     result = self.tools.invoke(tool_name, arguments)
@@ -108,21 +124,31 @@ class ReActAgent(BaseAgent):
                         )
                     )
                 self.recorder.on_step_end(run, step, action_desc, "\n".join(observations))
+
+                # If we've used 3+ tools, force the next step to be a final answer
+                if tool_call_count >= 3 and self._use_function_calling:
+                    hint = system_message(
+                        "You have used sufficient tools. Now synthesize all the information gathered "
+                        "and provide your final answer. Do NOT call any more tools."
+                    )
+                    messages.append(hint)
+
             else:
-                # Loop exhausted without final answer
                 if not final_answer:
                     final_answer = self._extract_last_content(messages) or (
                         "[Agent exceeded max steps without producing final answer]"
                     )
         except Exception as e:
             logger.exception(f"Agent run failed: {e}")
+            cleaned = self._clean_final_answer(final_answer) if final_answer else None
             self._finalize_run(
-                run, output=final_answer, status=RunStatus.FAILED, error=f"{type(e).__name__}: {e}"
+                run, output=cleaned, status=RunStatus.FAILED, error=f"{type(e).__name__}: {e}"
             )
-            return (final_answer or f"Error: {e}", run)
+            return (cleaned or f"Error: {e}", run)
 
-        run = self._finalize_run(run, output=final_answer, status=RunStatus.SUCCESS)
-        return (final_answer or "", run)
+        cleaned = self._clean_final_answer(final_answer) if final_answer else ""
+        run = self._finalize_run(run, output=cleaned, status=RunStatus.SUCCESS)
+        return (cleaned or "", run)
 
     # -------- Internal helpers --------
 
@@ -219,5 +245,31 @@ class ReActAgent(BaseAgent):
     def _extract_last_content(messages: list[Message]) -> str | None:
         for m in reversed(messages):
             if m.role == Role.ASSISTANT and m.content:
-                return m.content.strip()
+                return ReActAgent._clean_final_answer(m.content)
         return None
+
+    @staticmethod
+    def _clean_final_answer(text: str) -> str:
+        """Strip internal Thought/Action reasoning from a final answer."""
+        if not text:
+            return text
+        # Remove Thought sections
+        text = re.sub(r"Thought:\s*.+?(?=\nAction:|\Z)", "", text, flags=re.DOTALL)
+        # Remove Action sections (but keep Action Input / Final Answer)
+        text = re.sub(r"Action:\s*.+?(?=\nAction Input:|\nFinal Answer:|\Z)", "", text, flags=re.DOTALL)
+        # If there's a "Final Answer:" section, extract only that
+        final_match = re.search(r"Final Answer:\s*(.+)", text, re.DOTALL)
+        if final_match:
+            text = final_match.group(1).strip()
+        elif "Action Input:" in text:
+            # Try to extract Action Input content
+            input_match = re.search(r"Action Input:\s*(.+)", text, re.DOTALL)
+            if input_match:
+                text = input_match.group(1).strip()
+        # Clean up extra whitespace
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        text = text.strip()
+        # If after cleaning the text is empty, return original
+        if not text or len(text) < 2:
+            return text.strip()
+        return text
