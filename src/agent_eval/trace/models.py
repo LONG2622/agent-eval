@@ -104,3 +104,23 @@ class RunRecord(BaseModel):
 
     def to_storage_dict(self) -> dict[str, Any]:
         return self.model_dump(mode="json")
+
+
+# ============================================================
+# Annotation Record (for human annotation)
+# ============================================================
+
+
+class AnnotationRecord(BaseModel):
+    """Human annotation for a run."""
+
+    annotation_id: str = Field(default_factory=lambda: uuid.uuid4().hex[:16])
+    run_id: str
+    annotator: str = "anonymous"
+    score: int = Field(..., ge=1, le=5, description="Human score 1-5")
+    labels: list[str] = Field(default_factory=list)
+    comment: str = ""
+    created_at: str = Field(default_factory=_utc_timestamp)
+
+    def to_storage_dict(self) -> dict[str, Any]:
+        return self.model_dump(mode="json")

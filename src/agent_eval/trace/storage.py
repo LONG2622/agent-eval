@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from agent_eval.config import load_config
-from agent_eval.trace.models import RunRecord, Span
+from agent_eval.trace.models import AnnotationRecord, RunRecord, Span
 
 logger = logging.getLogger("agent_eval.trace.storage")
 
@@ -19,16 +19,21 @@ class JSONLStorage:
     Layout:
         <trace_dir>/<trace_id>.jsonl    - one Span per line
         <run_dir>/runs.jsonl            - one RunRecord per line (append-only)
+        <annotation_dir>/annotations.jsonl - one AnnotationRecord per line
     """
 
-    def __init__(self, trace_dir: str | Path | None = None, run_dir: str | Path | None = None) -> None:
+    def __init__(self, trace_dir: str | Path | None = None, run_dir: str | Path | None = None, annotation_dir: str | Path | None = None) -> None:
         cfg = load_config()
         self._trace_dir = Path(trace_dir or cfg.storage.trace_dir)
         self._run_dir = Path(run_dir or cfg.storage.run_dir)
+        self._annotation_dir = Path(annotation_dir or cfg.storage.output_dir) / "annotations"
         self._trace_dir.mkdir(parents=True, exist_ok=True)
         self._run_dir.mkdir(parents=True, exist_ok=True)
+        self._annotation_dir.mkdir(parents=True, exist_ok=True)
         self._runs_index: dict[str, RunRecord] = {}
+        self._annotations_index: list[AnnotationRecord] = []
         self._load_runs_index()
+        self._load_annotations_index()
 
     # ---- Spans ----
 
@@ -99,11 +104,67 @@ class JSONLStorage:
         tmp.replace(path)
 
     def load_run(self, run_id: str) -> RunRecord | None:
+        if run_id in self._runs_index:
+            return self._runs_index[run_id]
+        # Reload from disk if not found in memory (handles cross-instance writes)
+        self._load_runs_index()
         return self._runs_index.get(run_id)
 
     def list_runs(self, *, task_id: str | None = None) -> list[RunRecord]:
+        # Reload from disk to pick up any writes from other instances
+        self._load_runs_index()
         runs = list(self._runs_index.values())
         if task_id:
             runs = [r for r in runs if r.task_id == task_id]
         runs.sort(key=lambda r: r.started_at, reverse=True)
         return runs
+
+    # ---- Annotations ----
+
+    def _annotations_file(self) -> Path:
+        return self._annotation_dir / "annotations.jsonl"
+
+    def _load_annotations_index(self) -> None:
+        path = self._annotations_file()
+        if not path.exists():
+            return
+        self._annotations_index = []
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = AnnotationRecord.model_validate_json(line)
+                    self._annotations_index.append(record)
+                except Exception as e:
+                    logger.warning(f"Skipping invalid annotation line: {e}")
+
+    def save_annotation(self, annotation: AnnotationRecord) -> None:
+        self._annotations_index.append(annotation)
+        path = self._annotations_file()
+        tmp = path.with_suffix(".tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
+            for a in self._annotations_index:
+                f.write(json.dumps(a.to_storage_dict(), ensure_ascii=False) + "\n")
+        tmp.replace(path)
+
+    def load_annotations(self, run_id: str | None = None) -> list[AnnotationRecord]:
+        self._load_annotations_index()
+        if run_id:
+            return [a for a in self._annotations_index if a.run_id == run_id]
+        return list(self._annotations_index)
+
+    def delete_annotation(self, annotation_id: str) -> bool:
+        self._load_annotations_index()
+        original_len = len(self._annotations_index)
+        self._annotations_index = [a for a in self._annotations_index if a.annotation_id != annotation_id]
+        if len(self._annotations_index) < original_len:
+            path = self._annotations_file()
+            tmp = path.with_suffix(".tmp")
+            with open(tmp, "w", encoding="utf-8") as f:
+                for a in self._annotations_index:
+                    f.write(json.dumps(a.to_storage_dict(), ensure_ascii=False) + "\n")
+            tmp.replace(path)
+            return True
+        return False

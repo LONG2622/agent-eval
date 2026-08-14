@@ -36,8 +36,19 @@
 | **🗄️ SQLite Storage** | 4 张关系表（tasks / runs / spans / evaluations）、CRUD、聚合查询、JSONL → SQLite 一键迁移 |
 | **💻 Terminal Report** | Rich 时间线树 + KPI 卡片 + 维度汇总表 + Top 失败/成功案例 |
 | **📄 HTML Report** | 3 种报告类型（单任务详情 / 批量汇总 / A/B 对比）、Chart.js 图表（雷达图 / 柱状图 / 饼图）、自包含 HTML |
+| **🗂️ Human Annotation** | 人工评分（1–5 分）+ 10 类标签 + 自由评论、标注 CRUD、Ground Truth 积累 |
 
-### CLI（9 条命令）
+### Web 应用（FastAPI Server）
+
+| 页面 / API | 能力 |
+|-----------|------|
+| **🧩 REST API** | 健康检查 / 配置读取 / Runs CRUD / 批量评估 / Trace 回放 / 标注 CRUD（30+ 端点） |
+| **📊 Web Dashboard** | ECharts KPI 卡片、成功率与 Token/延迟趋势、Runs 表格（排序 + 搜索 + 跳转 Trace/Annotate） |
+| **🔍 Trace 回放** | 按 Step 分组的结构化时间线（Thought / LLM Call / Tool Call / Agent Step）、输入输出与 Token 详情、评估分数 |
+| **✏️ 人工标注** | 1–5 分评分、10 类多选标签、评论、历史标注列表与删除、Ground Truth 导出入口 |
+| **💬 交互式聊天** | Web 端 Chatbox 直接对话 Agent、可配置模型 / Steps / Temperature、实时推理步骤展示、自动评估分数、一键跳转 Trace / Annotate |
+
+### CLI（10 条命令）
 
 ```
 agent run        运行单个任务
@@ -49,6 +60,7 @@ agent compare    A/B 对比测试
 agent migrate    JSONL → SQLite 数据迁移
 agent config     查看 / 修改配置
 agent judge      对已有运行执行 LLM-as-Judge
+agent serve      启动 FastAPI Web 服务（Dashboard / Chat / Trace / Annotate）
 ```
 
 ---
@@ -139,6 +151,23 @@ agent eval examples/sample_tasks.jsonl -n 5
 # JSONL → SQLite
 agent migrate outputs
 ```
+
+### 9. 启动 Web 服务（Dashboard + Chat + Trace + Annotate）
+
+```bash
+# 启动 FastAPI 服务，默认监听 127.0.0.1:8000
+agent serve --host 127.0.0.1 --port 8000
+```
+
+服务启动后浏览器访问以下页面：
+
+| 页面 | 地址 | 说明 |
+|------|------|------|
+| **Dashboard** | http://127.0.0.1:8000/ | KPI 卡片 + 运行趋势图 + 所有 Runs 列表（🔍 Trace / ✏️ Annotate 快捷链接） |
+| **💬 交互式聊天** | http://127.0.0.1:8000/chat | 直接在网页端与 Agent 对话，配置模型参数，查看推理步骤、评估分数、一键标注 |
+| **🔍 Trace 回放** | http://127.0.0.1:8000/trace/{run_id} | 结构化回放 Agent 的每一步 Thought / LLM Call / Tool Call |
+| **✏️ 人工标注** | http://127.0.0.1:8000/annotate/{run_id} | 对一次 run 打分、加标签、写评语，用于生成 Ground Truth 改进评估模型 |
+| **REST API Docs** | http://127.0.0.1:8000/docs | Swagger 交互式 API 文档（30+ 端点） |
 
 ---
 
@@ -334,8 +363,8 @@ pricing:
 |------|------|---------|
 | **Phase 1 — MVP** | ✅ 完成 | Agent Runtime + Trace Recorder + 5 维评估 + CLI + Terminal Report |
 | **Phase 2 — 评估强化** | ✅ 完成 | LLM-as-Judge + A/B 对比 + SQLite + HTML 报告 + 并发批量 |
-| **Phase 3 — Web 化** | 🔜 计划中 | FastAPI REST API + Web Dashboard + Trace 回放 + 人工标注 |
-| **Phase 4 — 工程化** | 🔜 计划中 | CI/CD 集成 + 错误分类器 + Token 利用率分析 + 监控告警 |
+| **Phase 3 — Web 化** | ✅ 完成 | FastAPI REST API + Web Dashboard + Trace 回放 + 人工标注 + 💬 交互式聊天 |
+| **Phase 4 — 工程化** | 🔜 计划中 | CI/CD 集成 + 错误分类器 + Token 利用率分析 + 监控告警 + 标注 vs 自动评估对比报告 + Docker 部署 |
 
 ---
 

@@ -460,5 +460,54 @@ def judge_cmd(
     console.print(f"[bold green]✔ LLM-as-Judge complete: {len(run_ids)} runs evaluated.[/]")
 
 
+# ============================================================
+# agent serve (Web Dashboard + API Server)
+# ============================================================
+
+
+@app.command("serve", help="Start the web dashboard + REST API server.")
+def serve_cmd(
+    host: str = typer.Option("0.0.0.0", "--host", help="Host to bind."),
+    port: int = typer.Option(8000, "--port", "-p", help="Port to bind."),
+    reload: bool = typer.Option(False, "--reload", help="Enable auto-reload on code changes."),
+    open_browser: bool = typer.Option(True, "--no-open/--open", help="Auto-open browser."),
+) -> None:
+    import subprocess
+    import sys
+    import webbrowser
+
+    from agent_eval import __version__
+
+    console.print(
+        f"[bold cyan]Starting Agent Eval Server v{__version__}[/bold cyan]"
+    )
+    console.print(f"  📡 API:      http://{host}:{port}/api")
+    console.print(f"  📊 Dashboard: http://{host}:{port}/")
+    console.print(f"  🔄 Reload:   {'on' if reload else 'off'}")
+    console.print()
+
+    if open_browser:
+        import threading
+        def _open_browser():
+            import time
+            time.sleep(2)
+            webbrowser.open(f"http://localhost:{port}/")
+        threading.Thread(target=_open_browser, daemon=True).start()
+
+    # Run uvicorn
+    try:
+        import uvicorn
+        uvicorn.run(
+            "agent_eval.server.app:app",
+            host=host,
+            port=port,
+            reload=reload,
+            log_level="info",
+        )
+    except ImportError:
+        _err_console.print("[red]uvicorn not installed. Run: pip install uvicorn[standard][/]")
+        raise typer.Exit(code=1)
+
+
 if __name__ == "__main__":
     app()
