@@ -42,25 +42,29 @@
 
 | 页面 / API | 能力 |
 |-----------|------|
-| **🧩 REST API** | 健康检查 / 配置读取 / Runs CRUD / 批量评估 / Trace 回放 / 标注 CRUD（30+ 端点） |
+| **🧩 REST API** | 健康检查 / 配置读取 / Runs CRUD / 批量评估 / Trace 回放 / 标注 CRUD / 对比报告（30+ 端点） |
 | **📊 Web Dashboard** | ECharts KPI 卡片、成功率与 Token/延迟趋势、Runs 表格（排序 + 搜索 + 跳转 Trace/Annotate） |
 | **🔍 Trace 回放** | 按 Step 分组的结构化时间线（Thought / LLM Call / Tool Call / Agent Step）、输入输出与 Token 详情、评估分数 |
 | **✏️ 人工标注** | 1–5 分评分、10 类多选标签、评论、历史标注列表与删除、Ground Truth 导出入口 |
 | **💬 交互式聊天** | Web 端 Chatbox 直接对话 Agent、可配置模型 / Steps / Temperature、实时推理步骤展示、自动评估分数、一键跳转 Trace / Annotate |
+| **🔴 错误分析** | 11 类错误分类统计、错误详情表格、错误类型可视化图表 |
+| **📊 标注对比** | 人工标注 vs 自动评估分数对比、相关性分析、散点图 / 雷达图 / 差异分布、Top 差异案例 |
 
-### CLI（10 条命令）
+### CLI（12 条命令）
 
 ```
-agent run        运行单个任务
-agent eval       批量评估数据集
-agent report     查看运行报告（终端 / HTML）
-agent list       列出历史运行记录
-agent evaluate   重新评估指定运行
-agent compare    A/B 对比测试
-agent migrate    JSONL → SQLite 数据迁移
-agent config     查看 / 修改配置
-agent judge      对已有运行执行 LLM-as-Judge
-agent serve      启动 FastAPI Web 服务（Dashboard / Chat / Trace / Annotate）
+agent run                  运行单个任务
+agent eval                 批量评估数据集
+agent report               查看运行报告（终端 / HTML）
+agent list                 列出历史运行记录
+agent evaluate             重新评估指定运行
+agent compare              A/B 对比测试
+agent migrate              JSONL → SQLite 数据迁移
+agent config               查看 / 修改配置
+agent judge                对已有运行执行 LLM-as-Judge
+agent serve                启动 FastAPI Web 服务（Dashboard / Chat / Trace / Annotate）
+agent errors               错误分类与统计
+agent compare-annotations  标注 vs 自动评估对比报告
 ```
 
 ---
@@ -152,7 +156,7 @@ agent eval examples/sample_tasks.jsonl -n 5
 agent migrate outputs
 ```
 
-### 9. 启动 Web 服务（Dashboard + Chat + Trace + Annotate）
+### 9. 启动 Web 服务（Dashboard + Chat + Trace + Annotate + Errors + Compare）
 
 ```bash
 # 启动 FastAPI 服务，默认监听 127.0.0.1:8000
@@ -167,7 +171,96 @@ agent serve --host 127.0.0.1 --port 8000
 | **💬 交互式聊天** | http://127.0.0.1:8000/chat | 直接在网页端与 Agent 对话，配置模型参数，查看推理步骤、评估分数、一键标注 |
 | **🔍 Trace 回放** | http://127.0.0.1:8000/trace/{run_id} | 结构化回放 Agent 的每一步 Thought / LLM Call / Tool Call |
 | **✏️ 人工标注** | http://127.0.0.1:8000/annotate/{run_id} | 对一次 run 打分、加标签、写评语，用于生成 Ground Truth 改进评估模型 |
+| **🔴 错误分析** | http://127.0.0.1:8000/errors | 失败运行的错误分类统计、错误详情表格、可视化图表 |
+| **📊 标注对比** | http://127.0.0.1:8000/compare | 人工标注 vs 自动评估分数对比，含散点图、雷达图、差异分布等 |
 | **REST API Docs** | http://127.0.0.1:8000/docs | Swagger 交互式 API 文档（30+ 端点） |
+
+### 10. 错误分类
+
+```bash
+# 查看所有失败运行的错误分类汇总
+agent errors
+
+# 限制显示的错误数量
+agent errors --limit 5
+```
+
+### 11. 标注 vs 自动评估对比
+
+```bash
+# 运行对比分析（在终端显示结果）
+agent compare-annotations
+
+# 保存对比报告为 JSON 文件
+agent compare-annotations --save
+```
+
+对比内容包含：
+- 🔗 **Pearson 相关系数**：衡量人工评分与自动评估的一致性
+- 📊 **MAE / RMSE**：量化两者的偏差程度
+- 📈 **散点图**：每个运行点的人工 vs 自动分数分布
+- 🏷️ **标签分组**：按人工标签分组的差异分析
+- ⚠️ **Top 差异案例**：列出人工与自动评估分数差异最大的运行
+
+---
+
+## 🐳 Docker 部署
+
+### 快速部署
+
+```bash
+# 1. 克隆项目并进入目录
+git clone <your-repo-url>
+cd Agent
+
+# 2. 配置环境变量
+cp .env.example .env
+# 编辑 .env，填入你的 API Key 和模型配置
+
+# 3. 使用 Docker Compose 一键启动
+docker compose up -d
+```
+
+服务将在 `http://localhost:8000` 启动，包含所有功能页面。
+
+### 手动构建
+
+```bash
+# 构建镜像
+docker build -t agent-eval:latest .
+
+# 运行容器（映射端口 + 挂载数据卷）
+docker run -d \
+  --name agent-eval \
+  -p 8000:8000 \
+  -v agent_outputs:/app/outputs \
+  -v agent_data:/app/data \
+  --env-file .env \
+  agent-eval:latest
+```
+
+### Docker Compose 配置说明
+
+`docker-compose.yml` 提供了完整的生产级部署配置：
+
+| 配置项 | 说明 |
+|--------|------|
+| **端口映射** | `8000:8000`（宿主机:容器） |
+| **数据卷** | `agent_outputs`（运行输出）、`agent_data`（数据持久化） |
+| **环境变量** | 通过 `.env` 文件注入 API 配置 |
+| **健康检查** | 30 秒间隔检查 `/api/health` 端点 |
+| **日志轮转** | json-file 驱动，10MB/文件，最多 3 个 |
+| **自动重启** | `unless-stopped` 策略 |
+
+### 在 Docker 中使用 CLI
+
+```bash
+# 在运行中的容器内执行 CLI 命令
+docker exec -it agent-eval agent run "Calculate 256 * 42"
+docker exec -it agent-eval agent list
+docker exec -it agent-eval agent compare-annotations
+docker exec -it agent-eval agent errors
+```
 
 ---
 
@@ -180,7 +273,7 @@ Agent/
 ├── examples/
 │   └── sample_tasks.jsonl         # 10 条示例任务
 ├── src/agent_eval/
-│   ├── cli.py                     # CLI 入口（9 条命令）
+│   ├── cli.py                     # CLI 入口（12 条命令）
 │   ├── config.py                  # Pydantic 配置模型 + 环境加载
 │   ├── logger.py                  # 结构化日志
 │   │
@@ -214,11 +307,16 @@ Agent/
 │   │   ├── builtin.py             # 5 大内置评估器
 │   │   ├── engine.py              # EvaluationEngine + BatchSummary
 │   │   ├── llm_judge.py           # LLM-as-Judge 评估器
-│   │   └── ab_test.py             # A/B 测试引擎
+│   │   ├── ab_test.py             # A/B 测试引擎
+│   │   └── error_classifier.py    # 11 类错误分类器
 │   │
 │   └── report/                    # 报告层
 │       ├── terminal_report.py     # Rich 终端报告
-│       └── html_report.py         # Jinja2 + Chart.js HTML 报告
+│       ├── html_report.py         # Jinja2 + Chart.js HTML 报告
+│       └── comparison_report.py   # 标注 vs 自动评估对比报告
+│
+├── src/agent_eval/server/         # Web 服务层
+│   └── app.py                     # FastAPI 服务 + 6 个 Web 页面
 │
 ├── outputs/                       # 运行时输出（gitignore）
 │   ├── traces/                    # 每条 Span 一行 JSONL
@@ -229,6 +327,9 @@ Agent/
 ├── smoke_test.py                  # 离线冒烟测试（无需 API Key）
 ├── pyproject.toml                 # 项目打包配置
 ├── requirements.txt               # 依赖清单
+├── Dockerfile                     # Docker 镜像构建文件
+├── docker-compose.yml            # Docker Compose 编排文件
+├── .dockerignore                  # Docker 构建忽略规则
 └── .env.example                   # 环境变量模板
 ```
 
@@ -364,7 +465,18 @@ pricing:
 | **Phase 1 — MVP** | ✅ 完成 | Agent Runtime + Trace Recorder + 5 维评估 + CLI + Terminal Report |
 | **Phase 2 — 评估强化** | ✅ 完成 | LLM-as-Judge + A/B 对比 + SQLite + HTML 报告 + 并发批量 |
 | **Phase 3 — Web 化** | ✅ 完成 | FastAPI REST API + Web Dashboard + Trace 回放 + 人工标注 + 💬 交互式聊天 |
-| **Phase 4 — 工程化** | 🔜 计划中 | CI/CD 集成 + 错误分类器 + Token 利用率分析 + 监控告警 + 标注 vs 自动评估对比报告 + Docker 部署 |
+| **Phase 4 — 工程化** | 🔜 进行中 | 错误分类器 + 标注 vs 自动评估对比报告 + Docker 部署 + CI/CD + Token 利用率分析 + 监控告警 |
+
+### Phase 4 进度
+
+| 子任务 | 状态 |
+|--------|------|
+| 🔴 错误分类器（11 类） | ✅ 已完成 |
+| 📊 标注 vs 自动评估对比报告 | ✅ 已完成 |
+| 🐳 Docker 部署 | ✅ 已完成 |
+| 🔄 CI/CD 集成 | 🔜 计划中 |
+| 📈 Token 利用率分析 | 🔜 计划中 |
+| 🚨 监控告警 | 🔜 计划中 |
 
 ---
 

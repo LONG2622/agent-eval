@@ -1,0 +1,52 @@
+version: "3.9"
+
+services:
+  agent-eval:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agent-eval-server
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount outputs directory for persistence
+      - agent_outputs:/app/outputs
+      # Mount data directory for traces and annotations
+      - agent_data:/app/data
+      # Mount configs for runtime configuration
+      - ./configs:/app/configs:ro
+      # Mount .env for API keys (copy .env.example to .env first)
+      - ./.env:/app/.env:ro
+    environment:
+      - PYTHONUNBUFFERED=1
+      - AGENT_OUTPUT_DIR=/app/outputs
+      - AGENT_DATA_DIR=/app/data
+      - AGENT_TRACE_DIR=/app/outputs/traces
+      - AGENT_RUN_DIR=/app/outputs/runs
+      - AGENT_ANNOTATION_DIR=/app/outputs/annotations
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    networks:
+      - agent-net
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  agent_outputs:
+    driver: local
+  agent_data:
+    driver: local
+
+networks:
+  agent-net:
+    driver: bridge

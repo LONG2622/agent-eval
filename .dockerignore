@@ -1,0 +1,76 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Outputs and data (runtime - mounted as volumes)
+outputs/
+data/
+reports/
+logs/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor directories
+.Trash-*
+.history/
+
+# Test files (not needed in production)
+tests/
+test_*
+smoke_test.py
+
+# Docker files
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Large model files / datasets (not needed in image)
+models/
+datasets/
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.ckpt
+
+# Documentation
+docs/
+*.md
+
+# Jupyter notebooks
+*.ipynb
+.ipynb_checkpoints/

@@ -29,6 +29,9 @@ from agent_eval.evaluation import ABTestRunner, EvaluationEngine, LLMJudgeEvalua
 from agent_eval.logger import setup_logger
 from agent_eval.report import (
     HTMLReportGenerator,
+    format_comparison_text,
+    generate_comparison_report,
+    run_comparison,
     print_batch_summary,
     print_full_single_run_report,
     print_run_list,
@@ -518,11 +521,30 @@ def errors_cmd(
     limit: int = typer.Option(0, "--limit", "-n", help="Max recent errors to show (0=all)."),
 ) -> None:
     from agent_eval.evaluation.error_classifier import classify_all_runs, format_summary_text
-    from agent_eval.trace.storage import JSONLStorage
 
     storage = JSONLStorage()
     summary = classify_all_runs(storage, limit=limit)
     console.print(format_summary_text(summary))
+
+
+# ============================================================
+# agent compare-annotations (Human vs Auto Eval Comparison)
+# ============================================================
+
+@app.command("compare-annotations", help="Compare human annotations with automatic evaluation scores.")
+def compare_annotations_cmd(
+    save_report: bool = typer.Option(False, "--save", help="Save comparison report as JSON file."),
+) -> None:
+    storage = JSONLStorage()
+
+    with console.status("[cyan]Running annotation vs auto-evaluation comparison...[/cyan]"):
+        summary, items = run_comparison(storage)
+
+    console.print(format_comparison_text(summary, items))
+
+    if save_report:
+        path = generate_comparison_report(storage)
+        console.print(f"\n[green]📊 Comparison report saved:[/] {path}")
 
 
 if __name__ == "__main__":

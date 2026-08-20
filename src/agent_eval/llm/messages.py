@@ -35,7 +35,11 @@ class Message(BaseModel):
     def to_dict(self) -> dict[str, Any]:
         """Convert to OpenAI-compatible dict format."""
         d: dict[str, Any] = {"role": self.role.value}
-        if self.content is not None:
+        # NVIDIA API requires: assistant message must have either content or tool_calls, but not both
+        if self.tool_calls and self.role == Role.ASSISTANT:
+            # When tool_calls present, omit content to avoid API errors
+            pass
+        elif self.content is not None:
             d["content"] = self.content
         if self.name is not None:
             d["name"] = self.name

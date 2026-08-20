@@ -220,7 +220,7 @@ def _build_model_profiles_from_env() -> list[LLMModelProfile]:
             )
         )
 
-    # 3) NVIDIA B: Qwen 2.5 Coder 32B
+    # 3) NVIDIA B: Mistral Nemotron (Chinese-friendly, no FC)
     nvk2_key = os.environ.get("NVIDIA_QWEN_API_KEY", "")
     nvk2_url = os.environ.get("NVIDIA_QWEN_BASE_URL", "")
     nvk2_model = os.environ.get("NVIDIA_QWEN_MODEL_NAME", "")
@@ -228,11 +228,11 @@ def _build_model_profiles_from_env() -> list[LLMModelProfile]:
         profiles.append(
             LLMModelProfile(
                 id=nvk2_model,
-                display_name="NVIDIA: Qwen 2.5 Coder 32B",
+                display_name="NVIDIA: Mistral Nemotron",
                 model=nvk2_model,
                 api_key=nvk2_key,
                 base_url=nvk2_url,
-                description="中文友好 + 擅长代码，Function Calling 支持有限",
+                description="中文友好 + 推理能力强，不支持 Function Calling，Agent 自动降级到 Scratchpad 模式",
                 supports_function_calling=False,
                 supports_chinese=True,
             )

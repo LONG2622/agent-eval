@@ -538,11 +538,11 @@ _DASHBOARD_HTML = """<!DOCTYPE html>
     <a href="/" class="active">Dashboard</a>
     <a href="/chat">💬 Chat</a>
     <a href="/errors">🔴 Errors</a>
+    <a href="/compare">📊 Compare</a>
   </div>
-</div>
-<div class="container">
-  <div class="section-title" id="lastUpdated"></div>
-  <div class="kpi-grid" id="kpiGrid">
+  <div class="container">
+    <div class="section-title" id="lastUpdated"></div>
+    <div class="kpi-grid" id="kpiGrid">
     <div class="loading">Loading metrics...</div>
   </div>
   <div class="charts-grid">
@@ -1335,6 +1335,7 @@ _CHAT_HTML = r"""<!DOCTYPE html>
     <a href="/">Dashboard</a>
     <a href="/chat" class="active">Chat</a>
     <a href="/errors">🔴 Errors</a>
+    <a href="/compare">📊 Compare</a>
   </div>
 </div>
 <div class="chat-container">
@@ -1747,6 +1748,7 @@ _ERRORS_HTML = r"""<!DOCTYPE html>
     <a href="/">Dashboard</a>
     <a href="/chat">Chat</a>
     <a href="/errors" class="active">Errors</a>
+    <a href="/compare">📊 Compare</a>
   </div>
 </div>
 <div class="container">
@@ -1857,3 +1859,375 @@ loadData();
 @app.get("/errors", response_class=HTMLResponse)
 def errors_page():
     return HTMLResponse(content=_ERRORS_HTML)
+
+
+# ============================================================
+# Annotation vs Auto-Evaluation Comparison API + Page
+# ============================================================
+
+@app.get("/api/comparison/report")
+def get_comparison_report():
+    """Get comparison report between human annotations and auto-evaluation."""
+    from agent_eval.report import run_comparison
+
+    summary, items = run_comparison(_storage)
+    return {
+        "summary": summary.to_dict(),
+        "items": [item.to_dict() for item in items],
+    }
+
+
+_COMPARE_HTML = r"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Annotation Comparison - Agent Eval</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; color: #2c3e50; }
+  .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px 32px; display: flex; align-items: center; justify-content: space-between; }
+  .header h1 { font-size: 22px; font-weight: 600; }
+  .nav-links { display: flex; gap: 6px; }
+  .nav-links a { color: white; text-decoration: none; background: rgba(255,255,255,0.15); padding: 6px 12px; border-radius: 6px; font-size: 13px; }
+  .nav-links a:hover, .nav-links a.active { background: rgba(255,255,255,0.3); }
+  .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .kpi-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+  .kpi-card .label { font-size: 12px; color: #7f8c8d; text-transform: uppercase; letter-spacing: 0.5px; }
+  .kpi-card .value { font-size: 28px; font-weight: 700; margin-top: 8px; }
+  .kpi-card .value.success { color: #27ae60; }
+  .kpi-card .value.failed { color: #e74c3c; }
+  .kpi-card .value.info { color: #3498db; }
+  .kpi-card .value.warn { color: #f39c12; }
+  .kpi-card .value.purple { color: #8e44ad; }
+  .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+  .chart-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+  .chart-card h3 { font-size: 15px; margin-bottom: 12px; color: #34495e; }
+  .chart-container { width: 100%; height: 320px; }
+  .discrepancy-table { background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); overflow: hidden; margin-bottom: 24px; }
+  .discrepancy-table h3 { padding: 16px 20px; border-bottom: 1px solid #ecf0f1; font-size: 15px; color: #34495e; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #f8f9fa; text-align: left; padding: 12px 16px; font-size: 12px; color: #7f8c8d; text-transform: uppercase; letter-spacing: 0.5px; }
+  td { padding: 12px 16px; border-top: 1px solid #f1f2f6; font-size: 13px; }
+  tr:hover td { background: #f8f9fa; }
+  .corr-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+  .corr-high { background: #d5f5e3; color: #1e8449; }
+  .corr-medium { background: #fdebd0; color: #ca6f1e; }
+  .corr-low { background: #fadbd8; color: #c0392b; }
+  .empty-state { text-align: center; padding: 60px; color: #95a5a6; }
+  .loading { text-align: center; padding: 40px; color: #95a5a6; }
+  .section-title { font-size: 14px; color: #95a5a6; margin-bottom: 12px; }
+  .refresh-btn { background: #667eea; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 500; }
+  .refresh-btn:hover { background: #5a6fd8; }
+  .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  @media (max-width: 768px) {
+    .charts-grid { grid-template-columns: 1fr; }
+    .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>📊 Annotation vs Auto-Evaluation</h1>
+  <div class="nav-links">
+    <a href="/">Dashboard</a>
+    <a href="/chat">Chat</a>
+    <a href="/errors">Errors</a>
+    <a href="/compare" class="active">Compare</a>
+  </div>
+</div>
+<div class="container">
+  <div class="top-bar">
+    <div class="section-title" id="lastUpdated"></div>
+    <button class="refresh-btn" onclick="loadData()">🔄 Refresh</button>
+  </div>
+  <div id="content">
+    <div class="loading">Loading comparison data...</div>
+  </div>
+</div>
+
+<script>
+const API = window.location.origin;
+
+async function loadData() {
+  document.getElementById('lastUpdated').textContent = 'Last updated: ' + new Date().toLocaleTimeString();
+  try {
+    const res = await fetch(API + '/api/comparison/report');
+    if (!res.ok) throw new Error('Failed to load');
+    const data = await res.json();
+    renderPage(data);
+  } catch(e) {
+    document.getElementById('content').innerHTML = '<div class="empty-state">❌ Failed to load comparison data. Make sure you have both annotations and auto-evaluation results.</div>';
+  }
+}
+
+function renderPage(data) {
+  const summary = data.summary;
+  const items = data.items;
+  
+  if (!summary || summary.total_runs_both === 0) {
+    document.getElementById('content').innerHTML = `
+      <div class="empty-state">
+        <h3>No comparison data available</h3>
+        <p>You need runs with <strong>both</strong> human annotations and auto-evaluation scores.</p>
+        <p style="margin-top:12px;">Total runs: ${summary?.total_runs_with_auto_eval || 0} | With annotations: ${summary?.total_runs_with_annotations || 0}</p>
+        <p style="margin-top:8px;">💡 Use the Annotate page to add human scores, then come back here.</p>
+      </div>`;
+    return;
+  }
+
+  // KPI cards
+  const corr = summary.correlation;
+  const corrClass = corr !== null ? (corr >= 0.7 ? 'corr-high' : corr >= 0.4 ? 'corr-medium' : 'corr-low') : '';
+  const corrLabel = corr !== null ? `${corr.toFixed(3)}` : 'N/A';
+  const corrText = corr !== null ? (corr >= 0.7 ? 'Strong' : corr >= 0.4 ? 'Moderate' : 'Weak') : 'N/A';
+
+  document.getElementById('content').innerHTML = `
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="label">Runs Compared</div>
+        <div class="value info">${summary.total_runs_both}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="label">Correlation</div>
+        <div class="value ${corrClass === 'corr-high' ? 'success' : corrClass === 'corr-medium' ? 'warn' : 'failed'}">${corrLabel}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="label">MAE</div>
+        <div class="value ${summary.mae !== null && summary.mae < 0.2 ? 'success' : 'warn'}">${summary.mae !== null ? summary.mae.toFixed(3) : 'N/A'}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="label">Agreement (±0.2)</div>
+        <div class="value success">${summary.agreement_within_0_2 !== null ? (summary.agreement_within_0_2 * 100).toFixed(1) + '%' : 'N/A'}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="label">Human Mean</div>
+        <div class="value purple">${summary.human_mean !== null ? summary.human_mean.toFixed(3) : 'N/A'}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="label">Auto Mean</div>
+        <div class="value info">${summary.auto_mean !== null ? summary.auto_mean.toFixed(3) : 'N/A'}</div>
+      </div>
+    </div>
+
+    <div class="charts-grid">
+      <div class="chart-card">
+        <h3>📊 Human vs Auto Scores (Scatter)</h3>
+        <div class="chart-container" id="scatterChart"></div>
+      </div>
+      <div class="chart-card">
+        <h3>📈 Distribution of Discrepancies</h3>
+        <div class="chart-container" id="histChart"></div>
+      </div>
+    </div>
+
+    <div class="charts-grid">
+      <div class="chart-card">
+        <h3>🏷️ Breakdown by Human Labels</h3>
+        <div class="chart-container" id="labelChart"></div>
+      </div>
+      <div class="chart-card">
+        <h3>🎯 Dimension Radar Comparison</h3>
+        <div class="chart-container" id="radarChart"></div>
+      </div>
+    </div>
+
+    <div class="discrepancy-table">
+      <h3>⚠️ Top Discrepancies (Human vs Auto)</h3>
+      <div style="overflow-x: auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>Run ID</th>
+              <th>Task</th>
+              <th>Human Score</th>
+              <th>Auto Score</th>
+              <th>Discrepancy</th>
+              <th>Annotator</th>
+              <th>Labels</th>
+              <th>Status</th>
+              <th>Trace</th>
+            </tr>
+          </thead>
+          <tbody id="discBody"></tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  renderScatterChart(items);
+  renderHistChart(items);
+  renderLabelChart(summary);
+  renderRadarChart(items, summary);
+  renderDiscrepancyTable(summary.top_discrepancies);
+}
+
+function renderScatterChart(items) {
+  const chart = echarts.init(document.getElementById('scatterChart'));
+  const paired = items.filter(i => i.human_score !== null && i.auto_overall_score !== null);
+  const data = paired.map(i => [i.auto_overall_score, i.human_score, i.run_id]);
+  
+  chart.setOption({
+    tooltip: {
+      formatter: p => `Auto: ${p.value[0].toFixed(3)}<br/>Human: ${p.value[1].toFixed(3)}<br/>Run: ${p.value[2]}`
+    },
+    xAxis: { type: 'value', name: 'Auto Score', min: 0, max: 1 },
+    yAxis: { type: 'value', name: 'Human Score', min: 0, max: 1 },
+    series: [{
+      type: 'scatter',
+      data: data,
+      symbolSize: 10,
+      itemStyle: { color: '#667eea', opacity: 0.7 },
+      markLine: {
+        data: [{ xAxis: 0, yAxis: 0 }, { xAxis: 1, yAxis: 1 }],
+        lineStyle: { color: '#e74c3c', type: 'dashed' },
+        symbol: 'none'
+      }
+    }]
+  });
+}
+
+function renderHistChart(items) {
+  const chart = echarts.init(document.getElementById('histChart'));
+  const discrepancies = items
+    .filter(i => i.discrepancy !== null)
+    .map(i => i.discrepancy);
+  
+  // Create histogram bins
+  const bins = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0];
+  const binCounts = new Array(bins.length - 1).fill(0);
+  discrepancies.forEach(d => {
+    for (let i = 0; i < bins.length - 1; i++) {
+      if (d >= bins[i] && d < bins[i + 1]) {
+        binCounts[i]++;
+        break;
+      }
+    }
+  });
+  
+  chart.setOption({
+    tooltip: { trigger: 'axis' },
+    xAxis: { type: 'category', data: bins.slice(0, -1).map((b, i) => `${b.toFixed(1)}-${bins[i+1].toFixed(1)}`) },
+    yAxis: { type: 'value', name: 'Count' },
+    series: [{
+      type: 'bar',
+      data: binCounts,
+      itemStyle: { 
+        color: params => {
+          const val = params.value;
+          if (val === 0) return '#ecf0f1';
+          const max = Math.max(...binCounts);
+          const ratio = params.dataIndex / (bins.length - 2);
+          if (ratio < 0.33) return '#27ae60';
+          if (ratio < 0.66) return '#f39c12';
+          return '#e74c3c';
+        }
+      }
+    }]
+  });
+}
+
+function renderLabelChart(summary) {
+  const chart = echarts.init(document.getElementById('labelChart'));
+  const labels = Object.keys(summary.category_breakdown || {});
+  if (labels.length === 0) {
+    chart.setOption({
+      title: { text: 'No label data', left: 'center', top: 'center', textStyle: { color: '#95a5a6', fontSize: 14 } }
+    });
+    return;
+  }
+  const humanMeans = labels.map(l => summary.category_breakdown[l].human_mean);
+  const autoMeans = labels.map(l => summary.category_breakdown[l].auto_mean);
+  
+  chart.setOption({
+    tooltip: { trigger: 'axis' },
+    legend: { data: ['Human Mean', 'Auto Mean'] },
+    xAxis: { type: 'category', data: labels },
+    yAxis: { type: 'value', min: 0, max: 1 },
+    series: [
+      { name: 'Human Mean', type: 'bar', data: humanMeans, itemStyle: { color: '#667eea' } },
+      { name: 'Auto Mean', type: 'bar', data: autoMeans, itemStyle: { color: '#27ae60' } }
+    ]
+  });
+}
+
+function renderRadarChart(items) {
+  const chart = echarts.init(document.getElementById('radarChart'));
+  // Aggregate dimension scores from items
+  const dims = {};
+  items.forEach(item => {
+    if (item.auto_dimensions) {
+      for (const [dim, score] of Object.entries(item.auto_dimensions)) {
+        if (!dims[dim]) dims[dim] = [];
+        dims[dim].push(score);
+      }
+    }
+  });
+  
+  if (Object.keys(dims).length === 0) {
+    chart.setOption({
+      title: { text: 'No dimension data', left: 'center', top: 'center', textStyle: { color: '#95a5a6', fontSize: 14 } }
+    });
+    return;
+  }
+  
+  const indicators = Object.keys(dims).map(k => ({ name: k.replace(/_/g, ' ').toUpperCase(), max: 1 }));
+  const means = Object.values(dims).map(v => v.length > 0 ? v.reduce((a, b) => a + b, 0) / v.length : 0);
+  
+  chart.setOption({
+    tooltip: {},
+    radar: { indicator: indicators },
+    series: [{
+      type: 'radar',
+      data: [{
+        value: means,
+        name: 'Auto Eval',
+        areaStyle: { opacity: 0.3, color: '#27ae60' },
+        lineStyle: { color: '#27ae60' },
+        itemStyle: { color: '#27ae60' }
+      }]
+    }]
+  });
+}
+
+function renderDiscrepancyTable(items) {
+  const tbody = document.getElementById('discBody');
+  if (!items || items.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="9" class="loading">No discrepancy data</td></tr>';
+    return;
+  }
+  tbody.innerHTML = items.map(item => {
+    const discClass = item.discrepancy !== null ? (item.discrepancy > 0.3 ? 'style="color:#e74c3c;font-weight:bold;"' : item.discrepancy > 0.2 ? 'style="color:#f39c12;"' : 'style="color:#27ae60;"') : '';
+    return `<tr>
+      <td><a href="/trace/${item.run_id}" style="color:#2980b9;text-decoration:none;">${item.run_id.slice(0,12)}...</a></td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${item.input_text}">${item.input_text.slice(0,50)}...</td>
+      <td>${item.human_score !== null ? (item.human_score * 5).toFixed(1) + '/5' : '-'}</td>
+      <td>${item.auto_overall_score !== null ? (item.auto_overall_score * 100).toFixed(1) + '%' : '-'}</td>
+      <td ${discClass}>${item.discrepancy !== null ? item.discrepancy.toFixed(3) : '-'}</td>
+      <td>${item.annotator || '-'}</td>
+      <td>${(item.human_labels || []).join(', ') || '-'}</td>
+      <td>${item.status === 'success' ? '✅' : '❌'}</td>
+      <td><a href="/trace/${item.run_id}" style="color:#2980b9;text-decoration:none;">🔍</a></td>
+    </tr>`;
+  }).join('');
+}
+
+window.addEventListener('resize', () => {
+  document.querySelectorAll('.chart-container').forEach(el => {
+    const inst = echarts.getInstanceByDom(el);
+    if (inst) inst.resize();
+  });
+});
+
+loadData();
+</script>
+</body>
+</html>
+"""
+
+
+@app.get("/compare", response_class=HTMLResponse)
+def compare_page():
+    return HTMLResponse(content=_COMPARE_HTML)

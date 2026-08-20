@@ -192,7 +192,8 @@ class ReActAgent(BaseAgent):
                 for tc in (response.tool_calls or [])
             ]
             thought = response.content or f"Calling tools: {[tc.name for tc in tool_calls]}"
-            return thought, assistant_message(content=response.content, tool_calls=tool_calls), False
+            # NVIDIA API requires: assistant message must have either content or tool_calls, not both
+            return thought, assistant_message(content=None, tool_calls=tool_calls), False
 
         # No tool calls: interpret as potential final answer
         content = response.content or ""
@@ -211,10 +212,11 @@ class ReActAgent(BaseAgent):
                     args = {"input": args}
             if not isinstance(args, dict):
                 args = {"input": args}
+            # NVIDIA API requires: assistant message must have either content or tool_calls, not both
             return (
                 thought,
                 assistant_message(
-                    content=content,
+                    content=None,
                     tool_calls=[ToolCall(id=f"call_{step}", name=action, arguments=args)],
                 ),
                 False,
