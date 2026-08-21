@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import logging
+from agent_eval.logger import setup_logger
 import os
 import time
 from typing import Any
@@ -12,7 +12,7 @@ from agent_eval.llm.messages import Message
 from agent_eval.llm.providers.base import LLMCallOptions, LLMProvider, LLMResponse
 from agent_eval.llm.tokenizer import calculate_cost, count_tokens_breakdown
 
-logger = logging.getLogger("agent_eval.llm.openai")
+logger = setup_logger("agent_eval.llm.openai")
 
 
 class OpenAIProvider(LLMProvider):
@@ -67,6 +67,10 @@ class OpenAIProvider(LLMProvider):
         cfg = load_config()
         options = options or LLMCallOptions()
         model = options.model or cfg.llm.default_model
+        if not model:
+            raise ValueError(
+                "No model specified. Set LLM_DEFAULT_MODEL in .env or pass model explicitly."
+            )
         temperature = options.temperature if options.temperature is not None else cfg.llm.temperature
         max_tokens = options.max_tokens or cfg.llm.max_tokens
 
@@ -85,7 +89,7 @@ class OpenAIProvider(LLMProvider):
                     max_tokens=max_tokens,
                     options=options,
                 )
-            except Exception as e:
+            except (RuntimeError, ConnectionError, TimeoutError, OSError, ValueError) as e:
                 last_error = e
                 logger.warning(f"LLM call attempt {attempt}/{retry_cfg.max_attempts} failed: {e}")
                 if attempt < retry_cfg.max_attempts:

@@ -100,7 +100,7 @@ class TraceRecorder(LLMCallback, ToolCallback, AgentCallback):
                 ]
                 if tss:
                     run.total_latency_ms = int((max(tss) - min(tss)).total_seconds() * 1000)
-            except Exception:
+            except (RuntimeError, ValueError, TypeError):
                 run.total_latency_ms = total_latency
 
         # Persist

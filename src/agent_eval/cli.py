@@ -47,6 +47,7 @@ app = typer.Typer(
 )
 console = Console()
 _err_console = Console(stderr=True)
+logger = setup_logger("agent_eval.cli")
 
 
 def _version_callback(value: bool) -> None:
@@ -92,6 +93,7 @@ def run_cmd(
     expected_output: Optional[str] = typer.Option(None, "--expected", "-e", help="Expected answer for evaluation."),
     task_id: Optional[str] = typer.Option(None, "--task-id", help="User-defined task identifier."),
 ) -> None:
+    logger.info(f"Run started: agent={agent_type}, model={model or 'default'}, max_steps={max_steps}")
     runner = TaskRunner()
     task_item = TaskItem(
         input=task,
@@ -136,7 +138,7 @@ def eval_cmd(
 ) -> None:
     try:
         tasks = TaskDataset.from_jsonl(dataset)
-    except Exception as e:
+    except (RuntimeError, ValueError, ConnectionError, TimeoutError, OSError) as e:
         _err_console.print(f"[bold red]Failed to load dataset:[/] {e}")
         raise typer.Exit(code=1)
     if sample > 0:
@@ -174,6 +176,7 @@ def eval_cmd(
         _err_console.print("[red]Batch evaluation summary generation failed.[/]")
         raise typer.Exit(code=2)
     print_batch_summary(summary)
+    logger.info(f"Evaluation completed: {len(outcomes)} runs, success_rate={summary.overall_success_rate:.4f}")
 
     # Generate HTML report if requested
     if report_html:
@@ -488,6 +491,7 @@ def serve_cmd(
     console.print(f"  📊 Dashboard: http://{host}:{port}/")
     console.print(f"  🔄 Reload:   {'on' if reload else 'off'}")
     console.print()
+    logger.info(f"Server started: host={host}, port={port}, reload={reload}")
 
     if open_browser:
         import threading

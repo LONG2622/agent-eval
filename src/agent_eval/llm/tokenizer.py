@@ -21,12 +21,12 @@ def _get_encoder(model: str):
         import tiktoken
 
         return tiktoken.encoding_for_model(model)
-    except Exception:
+    except (ImportError, ModuleNotFoundError):
         try:
             import tiktoken
 
             return tiktoken.get_encoding("cl100k_base")
-        except Exception as e:
+        except (ValueError, TypeError, RuntimeError) as e:
             logger.warning(f"Failed to load tiktoken, using char-based estimator: {e}")
             return None
 

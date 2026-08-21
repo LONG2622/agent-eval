@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent Eval Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; color: #2c3e50; }
+  .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px 32px; display: flex; align-items: center; justify-content: space-between; }
+  .header h1 { font-size: 22px; font-weight: 600; }
+  .header .version { font-size: 12px; opacity: 0.8; }
+  .nav-links { display: flex; gap: 6px; }
+  .nav-links a { color: white; text-decoration: none; background: rgba(255,255,255,0.15); padding: 6px 12px; border-radius: 6px; font-size: 13px; }
+  .nav-links a.active { background: rgba(255,255,255,0.3); font-weight: 600; }
+  .nav-links a:hover { background: rgba(255,255,255,0.25); }
+  .container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .kpi-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); transition: transform 0.2s; }
+  .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.1); }
+  .kpi-card .label { font-size: 12px; color: #7f8c8d; text-transform: uppercase; letter-spacing: 0.5px; }
+  .kpi-card .value { font-size: 28px; font-weight: 700; margin-top: 8px; }
+  .kpi-card .value.success { color: #27ae60; }
+  .kpi-card .value.failed { color: #e74c3c; }
+  .kpi-card .value.info { color: #3498db; }
+  .kpi-card .value.warn { color: #f39c12; }
+  .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+  .chart-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+  .chart-card h3 { font-size: 15px; margin-bottom: 12px; color: #34495e; }
+  .chart-container { width: 100%; height: 280px; }
+  .runs-table { background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); overflow: hidden; }
+  .runs-table h3 { padding: 16px 20px; border-bottom: 1px solid #ecf0f1; font-size: 15px; color: #34495e; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #f8f9fa; text-align: left; padding: 12px 16px; font-size: 12px; color: #7f8c8d; text-transform: uppercase; letter-spacing: 0.5px; }
+  td { padding: 12px 16px; border-top: 1px solid #f1f2f6; font-size: 13px; }
+  tr:hover td { background: #f8f9fa; }
+  .status-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+  .status-success { background: #d5f5e3; color: #1e8449; }
+  .status-failed { background: #fadbd8; color: #c0392b; }
+  .status-running { background: #d6eaf8; color: #21618c; }
+  .status-pending { background: #fdebd0; color: #ca6f1e; }
+  .run-id { font-family: monospace; color: #2980b9; cursor: pointer; text-decoration: none; }
+  .run-id:hover { text-decoration: underline; }
+  .empty-state { text-align: center; padding: 40px; color: #95a5a6; }
+  .loading { text-align: center; padding: 40px; color: #95a5a6; }
+  .section-title { font-size: 14px; color: #95a5a6; margin-bottom: 12px; }
+  @media (max-width: 768px) {
+    .charts-grid { grid-template-columns: 1fr; }
+    .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>🧪 Agent Eval Dashboard</h1>
+  <div class="nav-links">
+    <a href="/" class="active">Dashboard</a>
+    <a href="/chat">💬 Chat</a>
+    <a href="/errors">🔴 Errors</a>
+    <a href="/compare">📊 Compare</a>
+  </div>
+  <div class="container">
+    <div class="section-title" id="lastUpdated"></div>
+    <div class="kpi-grid" id="kpiGrid">
+    <div class="loading">Loading metrics...</div>
+  </div>
+  <div class="charts-grid">
+    <div class="chart-card">
+      <h3>📊 Status Distribution</h3>
+      <div class="chart-container" id="statusChart"></div>
+    </div>
+    <div class="chart-card">
+      <h3>🎯 Evaluation Scores (by Dimension)</h3>
+      <div class="chart-container" id="radarChart"></div>
+    </div>
+  </div>
+  <div class="runs-table">
+    <h3>📋 Recent Runs</h3>
+    <div style="overflow-x: auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>Run ID</th>
+            <th>Agent</th>
+            <th>Status</th>
+            <th>Task</th>
+            <th>Latency (ms)</th>
+            <th>Tokens</th>
+            <th>Steps</th>
+            <th>Time</th>
+            <th>Trace</th>
+            <th>Annotate</th>
+          </tr>
+        </thead>
+        <tbody id="runsBody">
+          <tr><td colspan="8" class="loading">Loading runs...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = window.location.origin;
+const statusColors = { success: '#27ae60', failed: '#e74c3c', running: '#3498db', pending: '#f39c12', timeout: '#9b59b6' };
+const statusLabels = { success: 'Success', failed: 'Failed', running: 'Running', pending: 'Pending', timeout: 'Timeout' };
+
+async function loadStats() {
+  try {
+    const [statsRes, runsRes] = await Promise.all([
+      fetch(API + '/api/dashboard/stats'),
+      fetch(API + '/api/runs?limit=50')
+    ]);
+    const stats = await statsRes.json();
+    const runsData = await runsRes.json();
+    document.getElementById('version').textContent = 'v' + (await fetch(API + '/api/health').then(r => r.json())).version;
+    document.getElementById('lastUpdated').textContent = 'Last updated: ' + new Date().toLocaleTimeString();
+    renderKPI(stats);
+    renderStatusChart(stats);
+    renderRadarChart(stats);
+    renderRuns(runsData.runs);
+  } catch(e) {
+    console.error(e);
+    document.getElementById('kpiGrid').innerHTML = '<div class="empty-state">❌ Failed to load data. Is the server running?</div>';
+  }
+}
+
+function renderKPI(stats) {
+  const sr = (stats.success_rate * 100).toFixed(1) + '%';
+  document.getElementById('kpiGrid').innerHTML = `
+    <div class="kpi-card">
+      <div class="label">Total Runs</div>
+      <div class="value info">${stats.total_runs}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Success Rate</div>
+      <div class="value success">${sr}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Failed</div>
+      <div class="value failed">${stats.failed_count}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Avg Latency</div>
+      <div class="value warn">${stats.avg_latency_ms.toFixed(0)} ms</div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Total Tokens</div>
+      <div class="value info">${stats.total_tokens.toLocaleString()}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="label">Total Cost</div>
+      <div class="value warn">$${stats.total_cost.toFixed(4)}</div>
+    </div>
+  `;
+}
+
+function renderStatusChart(stats) {
+  const chart = echarts.init(document.getElementById('statusChart'));
+  const data = Object.entries(stats.by_status || {}).map(([k, v]) => ({
+    name: statusLabels[k] || k,
+    value: v,
+    itemStyle: { color: statusColors[k] || '#95a5a6' }
+  }));
+  chart.setOption({
+    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+    series: [{
+      type: 'pie',
+      radius: ['40%', '70%'],
+      avoidLabelOverlap: true,
+      label: { show: true, formatter: '{b}\n{c}' },
+      data: data.length > 0 ? data : [{ name: 'No data', value: 1 }]
+    }]
+  });
+}
+
+function renderRadarChart(stats) {
+  const chart = echarts.init(document.getElementById('radarChart'));
+  const dims = stats.dimension_scores || {};
+  const indicators = Object.keys(dims).map(k => ({
+    name: k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+    max: 1.0
+  }));
+  const values = Object.values(dims).map(v => v.mean || 0);
+  chart.setOption({
+    tooltip: {},
+    radar: { indicator: indicators.length > 0 ? indicators : [{ name: 'Score', max: 1 }] },
+    series: [{
+      type: 'radar',
+      data: [{
+        value: values.length > 0 ? values : [0],
+        name: 'Score',
+        areaStyle: { opacity: 0.3, color: '#667eea' },
+        lineStyle: { color: '#667eea' },
+        itemStyle: { color: '#667eea' }
+      }]
+    }]
+  });
+}
+
+function renderRuns(runs) {
+  if (!runs || runs.length === 0) {
+    document.getElementById('runsBody').innerHTML = '<tr><td colspan="10" class="empty-state">No runs yet. Run a task with <code>agent run</code> or via API.</td></tr>';
+    return;
+  }
+  document.getElementById('runsBody').innerHTML = runs.map(r => {
+    const statusClass = 'status-' + r.status;
+    const time = r.started_at ? new Date(r.started_at).toLocaleString() : '-';
+    const preview = (r.input_text || '').slice(0, 60) + ((r.input_text || '').length > 60 ? '...' : '');
+    return `<tr>
+      <td><a class="run-id" href="/trace/${r.run_id}">${r.run_id.slice(0, 12)}...</a></td>
+      <td>${r.agent_name || '-'}</td>
+      <td><span class="status-badge ${statusClass}">${statusLabels[r.status] || r.status}</span></td>
+      <td title="${r.input_text || ''}">${preview}</td>
+      <td>${r.total_latency_ms}</td>
+      <td>${r.tokens ? r.tokens.total_tokens : 0}</td>
+      <td>${r.total_steps}</td>
+      <td>${time}</td>
+      <td><a href="/trace/${r.run_id}" style="color:#2980b9;text-decoration:none;">🔍 Trace</a></td>
+      <td><a href="/annotate/${r.run_id}" style="color:#27ae60;text-decoration:none;">✏️ Annotate</a></td>
+    </tr>`;
+  }).join('');
+}
+
+window.addEventListener('resize', () => {
+  document.querySelectorAll('.chart-container').forEach(el => {
+    const inst = echarts.getInstanceByDom(el);
+    if (inst) inst.resize();
+  });
+});
+
+loadStats();
+</script>
+</body>
+</html>

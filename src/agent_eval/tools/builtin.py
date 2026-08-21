@@ -8,7 +8,10 @@ import random
 import re
 from typing import Any
 
+from agent_eval.logger import setup_logger
 from agent_eval.tools.registry import ToolResult, tool
+
+logger = setup_logger("agent_eval.tools.builtin")
 
 
 # -------------------- Calculator --------------------
@@ -46,7 +49,7 @@ def calculator(expression: str) -> Any:
     try:
         result = eval(expr, safe_globals, {})  # noqa: S307
         return str(result)
-    except Exception as e:
+    except (ValueError, TypeError, ZeroDivisionError, OverflowError, SyntaxError, NameError) as e:
         return ToolResult(output="", success=False, error=f"Eval failed: {e}")
 
 
@@ -146,7 +149,7 @@ def read_file(file_path: str, max_chars: int = 5000) -> Any:
         return ToolResult(output="", success=False, error=f"File not found: {file_path}")
     except UnicodeDecodeError:
         return ToolResult(output="", success=False, error=f"Cannot decode file {file_path} as UTF-8")
-    except Exception as e:
+    except (OSError, IOError, UnicodeDecodeError) as e:
         return ToolResult(output="", success=False, error=f"Error reading file: {e}")
 
 

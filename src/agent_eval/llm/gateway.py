@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
+from agent_eval.logger import setup_logger
 from agent_eval.llm.messages import Message
 from agent_eval.llm.providers.base import LLMCallback, LLMCallContext, LLMCallOptions, LLMProvider, LLMResponse
 from agent_eval.llm.providers.openai_provider import OpenAIProvider
 from agent_eval.llm.tokenizer import calculate_cost
 
-logger = logging.getLogger("agent_eval.llm.gateway")
+logger = setup_logger("agent_eval.llm.gateway")
 
 
 class LLMGateway:
@@ -87,7 +87,7 @@ class LLMGateway:
             for cb in self._callbacks:
                 cb.on_call_end(ctx)
             return response
-        except Exception as e:
+        except (RuntimeError, ConnectionError, TimeoutError, OSError, ValueError) as e:
             ctx.error = e
             for cb in self._callbacks:
                 cb.on_call_error(ctx)

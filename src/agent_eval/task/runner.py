@@ -11,8 +11,8 @@ v2 enhancements (Phase 2):
 from __future__ import annotations
 
 import json
-import logging
 import threading
+from agent_eval.logger import setup_logger
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -30,7 +30,7 @@ from agent_eval.trace import JSONLStorage, RunRecord, TraceRecorder
 if TYPE_CHECKING:
     from agent_eval.evaluation import BatchSummary, EvaluationEngine
 
-logger = logging.getLogger("agent_eval.task.runner")
+logger = setup_logger("agent_eval.task.runner")
 
 
 # ============================================================
@@ -97,7 +97,7 @@ class TaskDataset:
                 try:
                     data = json.loads(line)
                     items.append(TaskItem.from_dict(data))
-                except Exception as e:
+                except (json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
                     logger.warning(f"Skipping invalid line {i} in {path}: {e}")
         return cls(items=items, name=dataset_name)
 
@@ -222,7 +222,7 @@ class TaskRunner:
         if auto_evaluate:
             try:
                 self.evaluation_engine.evaluate_run(run.run_id)
-            except Exception as e:
+            except (RuntimeError, ValueError, ConnectionError, TimeoutError, OSError, KeyError, AttributeError) as e:
                 logger.warning(f"Auto-evaluation failed for run {run.run_id}: {e}")
         return RunOutcome(task=task, output=output, run=run)
 
@@ -282,7 +282,7 @@ class TaskRunner:
         run_ids = [o.run.run_id for o in outcomes]
         try:
             _, summary = self.evaluation_engine.evaluate_runs(run_ids, save_summary=True)
-        except Exception as e:
+        except (ValueError, TypeError, RuntimeError) as e:
             logger.warning(f"Batch aggregation failed: {e}")
             return outcomes, None
         return outcomes, summary
@@ -367,7 +367,7 @@ class TaskRunner:
                 task = future_to_task[future]
                 try:
                     outcome = future.result()
-                except Exception as e:
+                except (RuntimeError, ValueError, ConnectionError, TimeoutError, OSError, KeyError, AttributeError) as e:
                     logger.error(f"Task {task.task_id} thread failed: {e}")
                     outcome = RunOutcome(
                         task=task, output="",
@@ -415,7 +415,7 @@ class TaskRunner:
                     max_steps=max_steps,
                     auto_evaluate=True,
                 )
-            except Exception as e:
+            except (RuntimeError, ValueError, ConnectionError, TimeoutError, OSError) as e:
                 last_error = e
                 if attempt < max_retries:
                     delay = retry_delay * (2 ** attempt)
@@ -448,7 +448,7 @@ class TaskRunner:
                     data = json.loads(line)
                     if data.get("status") == "success":
                         completed.add(data["task_id"])
-                except Exception:
+                except (OSError, IOError, TypeError, ValueError):
                     pass
         return completed
 

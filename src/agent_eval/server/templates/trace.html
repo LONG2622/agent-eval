@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trace Replay - Agent Eval</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; color: #2c3e50; }
+  .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; }
+  .header h1 { font-size: 18px; font-weight: 600; }
+  .header a { color: white; text-decoration: none; opacity: 0.9; }
+  .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+  .run-summary { background: white; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+  .run-summary h2 { font-size: 16px; margin-bottom: 12px; }
+  .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .summary-item { padding: 8px 12px; background: #f8f9fa; border-radius: 8px; }
+  .summary-item .label { font-size: 11px; color: #7f8c8d; text-transform: uppercase; }
+  .summary-item .value { font-size: 18px; font-weight: 600; margin-top: 4px; }
+  .summary-item .value.success { color: #27ae60; }
+  .summary-item .value.failed { color: #e74c3c; }
+  .trace-timeline { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+  .trace-timeline h3 { font-size: 15px; margin-bottom: 16px; color: #34495e; }
+  .step-card { border: 1px solid #ecf0f1; border-radius: 10px; margin-bottom: 12px; overflow: hidden; }
+  .step-header { padding: 12px 16px; cursor: pointer; display: flex; align-items: center; justify-content: space-between; background: #f8f9fa; transition: background 0.2s; }
+  .step-header:hover { background: #eef1f5; }
+  .step-header.error { background: #fadbd8; }
+  .step-info { display: flex; align-items: center; gap: 12px; }
+  .step-badge { background: #667eea; color: white; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+  .step-badge.error { background: #e74c3c; }
+  .step-title { font-size: 14px; font-weight: 500; }
+  .step-meta { font-size: 12px; color: #95a5a6; }
+  .step-content { display: none; padding: 16px; }
+  .step-content.active { display: block; }
+  .span-section { margin-bottom: 12px; }
+  .span-section:last-child { margin-bottom: 0; }
+  .span-type { font-size: 12px; font-weight: 600; text-transform: uppercase; color: #7f8c8d; margin-bottom: 6px; }
+  .span-type.thought { color: #3498db; }
+  .span-type.llm_call { color: #9b59b6; }
+  .span-type.tool_call { color: #f39c12; }
+  .span-type.agent_step { color: #1abc9c; }
+  .span-item { background: #f8f9fa; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; font-size: 13px; }
+  .span-item .span-name { font-weight: 500; margin-bottom: 4px; }
+  .span-item .span-detail { color: #7f8c8d; font-size: 12px; }
+  .span-item pre { background: #2c3e50; color: #ecf0f1; padding: 12px; border-radius: 8px; overflow-x: auto; font-size: 12px; line-height: 1.5; max-height: 300px; }
+  .eval-section { margin-top: 20px; background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+  .eval-section h3 { font-size: 15px; margin-bottom: 12px; color: #34495e; }
+  .eval-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+  .eval-item { padding: 10px; background: #f8f9fa; border-radius: 8px; text-align: center; }
+  .eval-item .dim { font-size: 12px; color: #7f8c8d; text-transform: uppercase; }
+  .eval-item .score { font-size: 24px; font-weight: 700; margin-top: 4px; }
+  .eval-item .score.high { color: #27ae60; }
+  .eval-item .score.medium { color: #f39c12; }
+  .eval-item .score.low { color: #e74c3c; }
+  .back-link { display: inline-flex; align-items: center; gap: 6px; color: #667eea; text-decoration: none; font-size: 14px; margin-bottom: 16px; }
+  .back-link:hover { text-decoration: underline; }
+  .loading { text-align: center; padding: 60px; color: #95a5a6; }
+  .error-state { text-align: center; padding: 60px; color: #e74c3c; }
+  .annotate-btn { display: inline-block; padding: 8px 16px; background: #27ae60; color: white; text-decoration: none; border-radius: 8px; font-size: 13px; margin-top: 12px; }
+  .annotate-btn:hover { background: #219a52; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>🔍 Trace Replay</h1>
+  <a href="/">← Back to Dashboard</a>
+</div>
+<div class="container">
+  <a class="back-link" href="/">← Dashboard</a>
+  <div id="content">
+    <div class="loading">Loading trace...</div>
+  </div>
+</div>
+
+<script>
+const API = window.location.origin;
+const runId = window.location.pathname.split('/').pop();
+
+const spanTypeLabels = {
+  'thought': '💭 Thought',
+  'llm_call': '🤖 LLM Call',
+  'tool_call': '🔧 Tool Call',
+  'agent_step': '⚡ Agent Step'
+};
+
+async function loadTrace() {
+  try {
+    const res = await fetch(API + '/api/runs/' + runId + '/trace');
+    if (!res.ok) throw new Error('Not found');
+    const data = await res.json();
+    renderTrace(data);
+  } catch(e) {
+    document.getElementById('content').innerHTML = '<div class="error-state">❌ Failed to load trace. Run not found.</div>';
+  }
+}
+
+function renderTrace(data) {
+  const run = data.run;
+  const steps = data.steps;
+  
+  let html = `
+    <div class="run-summary">
+      <h2>Run Summary</h2>
+      <div class="summary-grid">
+        <div class="summary-item">
+          <div class="label">Status</div>
+          <div class="value ${run.status === 'success' ? 'success' : 'failed'}">${run.status}</div>
+        </div>
+        <div class="summary-item">
+          <div class="label">Task</div>
+          <div class="value" style="font-size:14px;">${run.input_text.slice(0, 50)}${run.input_text.length > 50 ? '...' : ''}</div>
+        </div>
+        <div class="summary-item">
+          <div class="label">Agent</div>
+          <div class="value" style="font-size:14px;">${run.agent_name || '-'}</div>
+        </div>
+        <div class="summary-item">
+          <div class="label">Steps</div>
+          <div class="value">${run.total_steps}</div>
+        </div>
+        <div class="summary-item">
+          <div class="label">Latency</div>
+          <div class="value">${run.total_latency_ms} ms</div>
+        </div>
+        <div class="summary-item">
+          <div class="label">Tokens</div>
+          <div class="value">${run.tokens ? run.tokens.total_tokens : 0}</div>
+        </div>
+      </div>
+      <a class="annotate-btn" href="/annotate/${run.run_id}">✏️ Add Annotation</a>
+    </div>
+  `;
+
+  // Evaluation section
+  if (data.evaluation && data.evaluation.length > 0) {
+    const dims = {};
+    for (const ev of data.evaluation) {
+      if (ev.sub_metric === null || ev.sub_metric === undefined) {
+        dims[ev.dimension] = ev.score;
+      }
+    }
+    if (Object.keys(dims).length > 0) {
+      html += '<div class="eval-section"><h3>📊 Evaluation Scores</h3><div class="eval-grid">';
+      for (const [dim, score] of Object.entries(dims)) {
+        const scoreClass = score >= 0.7 ? 'high' : score >= 0.4 ? 'medium' : 'low';
+        html += `
+          <div class="eval-item">
+            <div class="dim">${dim.replace(/_/g, ' ')}</div>
+            <div class="score ${scoreClass}">${score.toFixed(2)}</div>
+          </div>
+        `;
+      }
+      html += '</div></div>';
+    }
+  }
+
+  // Trace timeline
+  html += '<div class="trace-timeline" style="margin-top:20px;"><h3>🕐 Execution Trace</h3>';
+  
+  if (steps.length === 0) {
+    html += '<div class="loading">No trace data available</div>';
+  } else {
+    html += '<div id="steps-container">';
+    for (const step of steps) {
+      const hasError = step.has_error;
+      html += `
+        <div class="step-card">
+          <div class="step-header ${hasError ? 'error' : ''}" onclick="toggleStep(${step.step_index})">
+            <div class="step-info">
+              <span class="step-badge ${hasError ? 'error' : ''}">Step ${step.step_index}</span>
+              <span class="step-title">${step.total_spans} span(s)</span>
+            </div>
+            <div class="step-meta">${step.latency_ms} ms ${hasError ? '⚠️' : ''} ▼</div>
+          </div>
+          <div class="step-content" id="step-${step.step_index}">
+            ${renderStepContent(step)}
+          </div>
+        </div>
+      `;
+    }
+    html += '</div>';
+  }
+  html += '</div>';
+
+  document.getElementById('content').innerHTML = html;
+}
+
+function renderStepContent(step) {
+  let html = '';
+  
+  const sections = [
+    ['thoughts', '💭 Thoughts'],
+    ['llm_calls', '🤖 LLM Calls'],
+    ['tool_calls', '🔧 Tool Calls'],
+    ['agent_steps', '⚡ Agent Steps']
+  ];
+
+  for (const [key, label] of sections) {
+    const items = step[key] || [];
+    if (items.length > 0) {
+      html += `<div class="span-section"><div class="span-type ${key}">${label}</div>`;
+      for (const span of items) {
+        html += `<div class="span-item">`;
+        if (span.name) {
+          html += `<div class="span-name">${span.name} ${span.is_success ? '✅' : '❌'}</div>`;
+        }
+        if (span.input_data && Object.keys(span.input_data).length > 0) {
+          html += `<div class="span-detail">Input:</div><pre>${JSON.stringify(span.input_data, null, 2)}</pre>`;
+        }
+        if (span.output_data && Object.keys(span.output_data).length > 0) {
+          html += `<div class="span-detail">Output:</div><pre>${JSON.stringify(span.output_data, null, 2)}</pre>`;
+        }
+        if (span.tokens && span.tokens.total_tokens > 0) {
+          html += `<div class="span-detail">Tokens: ${span.tokens.total_tokens} (prompt: ${span.tokens.prompt_tokens}, completion: ${span.tokens.completion_tokens})</div>`;
+        }
+        if (span.latency_ms > 0) {
+          html += `<div class="span-detail">Latency: ${span.latency_ms}ms</div>`;
+        }
+        if (span.exception) {
+          html += `<div class="span-detail" style="color:#e74c3c;">Error: ${span.exception}</div>`;
+        }
+        html += `</div>`;
+      }
+      html += `</div>`;
+    }
+  }
+
+  return html || '<div style="color:#95a5a6;">No detailed spans</div>';
+}
+
+function toggleStep(index) {
+  const el = document.getElementById('step-' + index);
+  if (el) {
+    el.classList.toggle('active');
+  }
+}
+
+// Load on start
+loadTrace();
+</script>
+</body>
+</html>

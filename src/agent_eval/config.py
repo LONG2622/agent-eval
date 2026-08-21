@@ -70,6 +70,39 @@ class StorageConfig(BaseModel):
 
 class EvaluationQualityConfig(BaseModel):
     keyword_match_threshold: float = 0.6
+    # AnswerQualityEvaluator thresholds
+    completeness_min_chars: int = 10
+    completeness_overlength_factor: float = 2.5
+    completeness_overlength_penalty: float = 0.7
+    completeness_pass_threshold: float = 0.5
+    refusal_score: float = 0.3
+    non_refusal_score: float = 0.9
+    relevance_refusal_weight: float = 0.4
+    relevance_overlap_weight: float = 0.6
+    relevance_pass_threshold: float = 0.6
+    correctness_default: float = 0.5
+    correctness_pass_threshold: float = 0.6
+    overall_pass_threshold: float = 0.6
+
+
+class ToolUsageConfig(BaseModel):
+    success_rate_threshold: float = 0.8
+    overall_pass_threshold: float = 0.7
+    success_weight: float = 0.6
+    redundancy_weight: float = 0.4
+    max_calls_per_step: int = 3
+
+
+class LatencyConfig(BaseModel):
+    total_budget_ms: int = 60_000
+    avg_step_budget_ms: int = 10_000
+
+
+class TokenCostConfig(BaseModel):
+    chars_per_token_ratio: float = 4.0
+    max_total_tokens: int = 128_000
+    max_cost_usd: float = 1.0
+    efficiency_threshold: float = 0.3
 
 
 class JudgeConfig(BaseModel):
@@ -91,6 +124,9 @@ class EvaluationConfig(BaseModel):
         ]
     )
     quality: EvaluationQualityConfig = Field(default_factory=EvaluationQualityConfig)
+    tool_usage: ToolUsageConfig = Field(default_factory=ToolUsageConfig)
+    latency: LatencyConfig = Field(default_factory=LatencyConfig)
+    token_cost: TokenCostConfig = Field(default_factory=TokenCostConfig)
     judge: JudgeConfig = Field(default_factory=JudgeConfig)
 
 

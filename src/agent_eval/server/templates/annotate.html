@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Annotate - Agent Eval</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; color: #2c3e50; }
+  .header { background: linear-gradient(135deg, #27ae60 0%, #1abc9c 100%); color: white; padding: 16px 24px; display: flex; align-items: center; justify-content: space-between; }
+  .header h1 { font-size: 18px; font-weight: 600; }
+  .header a { color: white; text-decoration: none; opacity: 0.9; }
+  .container { max-width: 800px; margin: 0 auto; padding: 24px; }
+  .back-link { display: inline-flex; align-items: center; gap: 6px; color: #27ae60; text-decoration: none; font-size: 14px; margin-bottom: 16px; }
+  .back-link:hover { text-decoration: underline; }
+  .run-info { background: white; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+  .run-info h2 { font-size: 15px; margin-bottom: 12px; }
+  .info-row { display: flex; gap: 12px; margin-bottom: 8px; font-size: 13px; }
+  .info-row .label { color: #7f8c8d; min-width: 80px; }
+  .info-row .value { flex: 1; }
+  .output-box { background: #f8f9fa; border-radius: 8px; padding: 12px; margin-top: 10px; font-size: 13px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
+  .annotate-form { background: white; border-radius: 12px; padding: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+  .form-group { margin-bottom: 20px; }
+  .form-group label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 8px; color: #34495e; }
+  .score-options { display: flex; gap: 8px; }
+  .score-btn { flex: 1; padding: 12px; border: 2px solid #ecf0f1; border-radius: 8px; background: white; cursor: pointer; font-size: 18px; font-weight: 600; transition: all 0.2s; }
+  .score-btn:hover { border-color: #27ae60; }
+  .score-btn.active { border-color: #27ae60; background: #d5f5e3; color: #1e8449; }
+  .score-btn .score-label { display: block; font-size: 11px; font-weight: 400; margin-top: 2px; }
+  .label-options { display: flex; flex-wrap: wrap; gap: 8px; }
+  .label-chip { padding: 6px 14px; border: 1px solid #ecf0f1; border-radius: 16px; background: white; cursor: pointer; font-size: 12px; transition: all 0.2s; }
+  .label-chip:hover { border-color: #27ae60; }
+  .label-chip.active { background: #27ae60; color: white; border-color: #27ae60; }
+  textarea { width: 100%; min-height: 100px; padding: 12px; border: 1px solid #ecf0f1; border-radius: 8px; font-size: 13px; font-family: inherit; resize: vertical; }
+  textarea:focus { outline: none; border-color: #27ae60; }
+  .submit-btn { width: 100%; padding: 14px; background: #27ae60; color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+  .submit-btn:hover { background: #219a52; }
+  .submit-btn:disabled { background: #bdc3c7; cursor: not-allowed; }
+  .existing-annotations { background: white; border-radius: 12px; padding: 20px; margin-top: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+  .existing-annotations h3 { font-size: 14px; margin-bottom: 12px; }
+  .annotation-item { padding: 12px; background: #f8f9fa; border-radius: 8px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: flex-start; }
+  .annotation-item .score-display { font-size: 24px; font-weight: 700; color: #27ae60; margin-right: 12px; }
+  .annotation-item .annotation-body { flex: 1; }
+  .annotation-item .annotation-meta { font-size: 11px; color: #95a5a6; }
+  .annotation-item .annotation-comment { font-size: 13px; margin-top: 4px; }
+  .annotation-item .delete-btn { background: none; border: none; color: #e74c3c; cursor: pointer; font-size: 16px; padding: 4px 8px; }
+  .loading { text-align: center; padding: 60px; color: #95a5a6; }
+  .empty-state { text-align: center; padding: 20px; color: #95a5a6; font-size: 13px; }
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); padding: 12px 24px; background: #2c3e50; color: white; border-radius: 8px; font-size: 14px; opacity: 0; transition: opacity 0.3s; }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>✏️ Human Annotation</h1>
+  <a href="/">← Dashboard</a>
+</div>
+<div class="container">
+  <a class="back-link" href="/">← Dashboard</a>
+  <div id="content">
+    <div class="loading">Loading...</div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const API = window.location.origin;
+const runId = window.location.pathname.split('/').pop();
+let selectedScore = 5;
+let selectedLabels = [];
+
+const LABEL_OPTIONS = ['correct', 'incorrect', 'complete', 'incomplete', 'relevant', 'irrelevant', 'safe', 'unsafe', 'clear', 'unclear'];
+
+async function loadData() {
+  try {
+    const [runRes, annRes] = await Promise.all([
+      fetch(API + '/api/runs/' + runId),
+      fetch(API + '/api/runs/' + runId + '/annotations')
+    ]);
+    if (!runRes.ok) throw new Error('Not found');
+    const runData = await runRes.json();
+    const annData = await annRes.json();
+    renderPage(runData, annData.annotations);
+  } catch(e) {
+    document.getElementById('content').innerHTML = '<div class="loading">❌ Failed to load run data</div>';
+  }
+}
+
+function renderPage(runData, existingAnnotations) {
+  const run = runData.run;
+  const html = `
+    <div class="run-info">
+      <h2>Run Details</h2>
+      <div class="info-row"><span class="label">Run ID:</span><span class="value">${run.run_id}</span></div>
+      <div class="info-row"><span class="label">Status:</span><span class="value">${run.status}</span></div>
+      <div class="info-row"><span class="label">Task:</span><span class="value">${run.input_text}</span></div>
+      <div class="info-row"><span class="label">Output:</span></div>
+      <div class="output-box">${run.final_output || 'No output'}</div>
+      <div style="margin-top:12px;"><a href="/trace/${run.run_id}" style="color:#27ae60; text-decoration:none;">🔍 View full trace →</a></div>
+    </div>
+
+    <div class="annotate-form">
+      <h2 style="font-size:16px; margin-bottom:16px;">Add Annotation</h2>
+      
+      <div class="form-group">
+        <label>Score (1-5)</label>
+        <div class="score-options" id="scoreOptions">
+          <button type="button" class="score-btn" data-score="1">1<span class="score-label">Poor</span></button>
+          <button type="button" class="score-btn" data-score="2">2<span class="score-label">Fair</span></button>
+          <button type="button" class="score-btn" data-score="3">3<span class="score-label">OK</span></button>
+          <button type="button" class="score-btn" data-score="4">4<span class="score-label">Good</span></button>
+          <button type="button" class="score-btn active" data-score="5">5<span class="score-label">Excellent</span></button>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Labels (multi-select)</label>
+        <div class="label-options" id="labelOptions">
+          ${LABEL_OPTIONS.map(l => `<span class="label-chip" data-label="${l}">${l}</span>`).join('')}
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Comment</label>
+        <textarea id="commentInput" placeholder="Share your thoughts about this agent run..."></textarea>
+      </div>
+
+      <button class="submit-btn" onclick="submitAnnotation()">Submit Annotation</button>
+    </div>
+
+    <div class="existing-annotations">
+      <h3>Existing Annotations (${existingAnnotations.length})</h3>
+      ${existingAnnotations.length === 0 ? '<div class="empty-state">No annotations yet. Be the first!</div>' : 
+        existingAnnotations.map(a => `
+          <div class="annotation-item" id="ann-${a.annotation_id}">
+            <div class="score-display">${'⭐'.repeat(a.score)}</div>
+            <div class="annotation-body">
+              <div class="annotation-meta">${a.annotator} · ${new Date(a.created_at).toLocaleString()}</div>
+              ${a.labels.length > 0 ? `<div style="margin-top:4px;"><span style="background:#eef1f5; padding:2px 8px; border-radius:10px; font-size:11px; margin-right:4px;">${a.labels.join(', ')}</span></div>` : ''}
+              ${a.comment ? `<div class="annotation-comment">${a.comment}</div>` : ''}
+            </div>
+            <button class="delete-btn" onclick="deleteAnnotation('${a.annotation_id}')" title="Delete">🗑️</button>
+          </div>
+        `).join('')
+      }
+    </div>
+  `;
+
+  document.getElementById('content').innerHTML = html;
+
+  // Bind score selection
+  document.querySelectorAll('.score-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.score-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedScore = parseInt(btn.dataset.score);
+    });
+  });
+
+  // Bind label selection
+  document.querySelectorAll('.label-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const label = chip.dataset.label;
+      if (selectedLabels.includes(label)) {
+        selectedLabels = selectedLabels.filter(l => l !== label);
+        chip.classList.remove('active');
+      } else {
+        selectedLabels.push(label);
+        chip.classList.add('active');
+      }
+    });
+  });
+}
+
+async function submitAnnotation() {
+  const comment = document.getElementById('commentInput').value;
+  try {
+    const res = await fetch(API + '/api/runs/' + runId + '/annotate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        score: selectedScore,
+        labels: selectedLabels,
+        comment: comment,
+        annotator: 'web_user'
+      })
+    });
+    if (!res.ok) throw new Error('Failed to submit');
+    showToast('✅ Annotation saved!');
+    setTimeout(() => loadData(), 500);
+  } catch(e) {
+    showToast('❌ Failed to save');
+  }
+}
+
+async function deleteAnnotation(annId) {
+  if (!confirm('Delete this annotation?')) return;
+  try {
+    const res = await fetch(API + '/api/annotations/' + annId, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Failed to delete');
+    showToast('🗑️ Deleted!');
+    setTimeout(() => loadData(), 500);
+  } catch(e) {
+    showToast('❌ Failed to delete');
+  }
+}
+
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 2000);
+}
+
+loadData();
+</script>
+</body>
+</html>

@@ -17,9 +17,10 @@ built-in heuristic evaluator so that batch pipelines never break.
 from __future__ import annotations
 
 import json
-import logging
 import re
 from typing import Any
+
+from agent_eval.logger import setup_logger
 
 from pydantic import BaseModel, Field
 
@@ -33,7 +34,7 @@ from agent_eval.evaluation.base import (
 from agent_eval.llm import LLMGateway
 from agent_eval.trace import RunRecord, Span
 
-logger = logging.getLogger("agent_eval.evaluation.llm_judge")
+logger = setup_logger("agent_eval.evaluation.llm_judge")
 
 # ---------------------------------------------------------------------------
 # Data models for the judge's structured output
@@ -185,7 +186,7 @@ class LLMJudgeEvaluator(BaseEvaluator):
         try:
             judge_output = self._call_judge(question, expected, output)
             return judge_output.to_evaluator_results(run.run_id, self.name)
-        except Exception as exc:
+        except (json.JSONDecodeError, ValueError, TypeError, KeyError) as exc:
             logger.warning(f"LLM judge failed for run {run.run_id}: {exc}")
             return self._fallback(run, spans)
 
@@ -218,14 +219,14 @@ class LLMJudgeEvaluator(BaseEvaluator):
         # Try direct parse
         try:
             return JudgeOutput.model_validate_json(cleaned)
-        except Exception:
+        except (ValueError, TypeError):
             pass
         # Try to find a JSON block in the text
         match = re.search(r"\{[\s\S]*\}", cleaned)
         if match:
             try:
                 return JudgeOutput.model_validate_json(match.group(0))
-            except Exception:
+            except (ValueError, TypeError, KeyError):
                 pass
         # Last resort: try to coerce via json.loads
         data = json.loads(cleaned)

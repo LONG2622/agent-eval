@@ -402,7 +402,7 @@ class SQLiteStorage:
                         run = RunRecord.model_validate_json(line)
                         self.save_run(run)
                         counts["runs"] += 1
-                    except Exception as e:
+                    except (ValueError, TypeError, KeyError) as e:
                         logger.warning(f"Skipping run line: {e}")
 
         # Import spans (one file per trace_id)
@@ -419,7 +419,7 @@ class SQLiteStorage:
                             continue
                         try:
                             spans.append(Span.model_validate_json(line))
-                        except Exception as e:
+                        except (ValueError, TypeError, KeyError) as e:
                             logger.warning(f"Skipping span line in {trace_file}: {e}")
                 if spans:
                     self.append_spans(spans)

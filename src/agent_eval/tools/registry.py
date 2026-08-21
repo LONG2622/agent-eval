@@ -12,6 +12,10 @@ from typing import Any, Callable
 
 from pydantic import create_model, ValidationError
 
+from agent_eval.logger import setup_logger
+
+logger = setup_logger("agent_eval.tools.registry")
+
 
 # -------------------- Tool Parameter Schemas --------------------
 
@@ -208,7 +212,7 @@ class FunctionTool(BaseTool):
                 success=True,
                 latency_ms=int((time.perf_counter() - started) * 1000),
             )
-        except Exception as e:
+        except (ValueError, TypeError, RuntimeError, OSError) as e:
             return ToolResult(
                 output="",
                 success=False,
@@ -310,7 +314,7 @@ class ToolRegistry:
             for cb in self._callbacks:
                 cb.on_tool_end(ctx)
             return result
-        except Exception as e:
+        except (ValueError, TypeError, RuntimeError, OSError) as e:
             ctx.error = e
             for cb in self._callbacks:
                 cb.on_tool_error(ctx)

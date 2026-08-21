@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import json
-import logging
 import statistics
+from agent_eval.logger import setup_logger
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
@@ -14,7 +14,7 @@ from agent_eval.evaluation.base import BaseEvaluator, EvalDimension, EvaluationR
 from agent_eval.evaluation.builtin import get_builtin_evaluator_instances
 from agent_eval.trace import JSONLStorage, RunRecord, RunStatus, Span
 
-logger = logging.getLogger("agent_eval.evaluation.engine")
+logger = setup_logger("agent_eval.evaluation.engine")
 
 
 # ============================================================
@@ -129,7 +129,7 @@ class EvaluationEngine:
             try:
                 results = ev.evaluate(run, spans)
                 all_results.extend(results)
-            except Exception as e:
+            except (ValueError, TypeError, KeyError, AttributeError, RuntimeError) as e:
                 logger.error(f"Evaluator {ev.name} failed on run {run_id}: {e}")
         self._index[run_id] = all_results
         self._persist_run_results(run_id, all_results)

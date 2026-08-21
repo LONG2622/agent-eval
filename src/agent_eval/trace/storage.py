@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import json
-import logging
+from agent_eval.logger import setup_logger
+import threading
 from pathlib import Path
 from typing import Any, Iterable
 
 from agent_eval.config import load_config
 from agent_eval.trace.models import AnnotationRecord, RunRecord, Span
 
-logger = logging.getLogger("agent_eval.trace.storage")
+logger = setup_logger("agent_eval.trace.storage")
 
 
 class JSONLStorage:
@@ -32,6 +33,7 @@ class JSONLStorage:
         self._annotation_dir.mkdir(parents=True, exist_ok=True)
         self._runs_index: dict[str, RunRecord] = {}
         self._annotations_index: list[AnnotationRecord] = []
+        self._lock = threading.Lock()
         self._load_runs_index()
         self._load_annotations_index()
 
@@ -68,7 +70,7 @@ class JSONLStorage:
                     continue
                 try:
                     spans.append(Span.model_validate_json(line))
-                except Exception as e:
+                except (json.JSONDecodeError, KeyError, TypeError) as e:
                     logger.warning(f"Skipping invalid span line in {path}: {e}")
         spans.sort(key=lambda s: (s.step_index, s.created_at))
         return spans
@@ -90,18 +92,19 @@ class JSONLStorage:
                 try:
                     record = RunRecord.model_validate_json(line)
                     self._runs_index[record.run_id] = record
-                except Exception as e:
+                except (json.JSONDecodeError, KeyError, TypeError) as e:
                     logger.warning(f"Skipping invalid run line: {e}")
 
     def save_run(self, run: RunRecord) -> None:
-        self._runs_index[run.run_id] = run
-        path = self._runs_file()
-        # Rewrite full runs file for simplicity (small dataset in MVP)
-        tmp = path.with_suffix(".tmp")
-        with open(tmp, "w", encoding="utf-8") as f:
-            for r in self._runs_index.values():
-                f.write(json.dumps(r.to_storage_dict(), ensure_ascii=False) + "\n")
-        tmp.replace(path)
+        with self._lock:
+            self._runs_index[run.run_id] = run
+            path = self._runs_file()
+            # Rewrite full runs file for simplicity (small dataset in MVP)
+            tmp = path.with_suffix(".tmp")
+            with open(tmp, "w", encoding="utf-8") as f:
+                for r in self._runs_index.values():
+                    f.write(json.dumps(r.to_storage_dict(), ensure_ascii=False) + "\n")
+            tmp.replace(path)
 
     def load_run(self, run_id: str) -> RunRecord | None:
         if run_id in self._runs_index:
@@ -137,17 +140,18 @@ class JSONLStorage:
                 try:
                     record = AnnotationRecord.model_validate_json(line)
                     self._annotations_index.append(record)
-                except Exception as e:
+                except (json.JSONDecodeError, KeyError, TypeError) as e:
                     logger.warning(f"Skipping invalid annotation line: {e}")
 
     def save_annotation(self, annotation: AnnotationRecord) -> None:
-        self._annotations_index.append(annotation)
-        path = self._annotations_file()
-        tmp = path.with_suffix(".tmp")
-        with open(tmp, "w", encoding="utf-8") as f:
-            for a in self._annotations_index:
-                f.write(json.dumps(a.to_storage_dict(), ensure_ascii=False) + "\n")
-        tmp.replace(path)
+        with self._lock:
+            self._annotations_index.append(annotation)
+            path = self._annotations_file()
+            tmp = path.with_suffix(".tmp")
+            with open(tmp, "w", encoding="utf-8") as f:
+                for a in self._annotations_index:
+                    f.write(json.dumps(a.to_storage_dict(), ensure_ascii=False) + "\n")
+            tmp.replace(path)
 
     def load_annotations(self, run_id: str | None = None) -> list[AnnotationRecord]:
         self._load_annotations_index()
@@ -156,15 +160,16 @@ class JSONLStorage:
         return list(self._annotations_index)
 
     def delete_annotation(self, annotation_id: str) -> bool:
-        self._load_annotations_index()
-        original_len = len(self._annotations_index)
-        self._annotations_index = [a for a in self._annotations_index if a.annotation_id != annotation_id]
-        if len(self._annotations_index) < original_len:
-            path = self._annotations_file()
-            tmp = path.with_suffix(".tmp")
-            with open(tmp, "w", encoding="utf-8") as f:
-                for a in self._annotations_index:
-                    f.write(json.dumps(a.to_storage_dict(), ensure_ascii=False) + "\n")
-            tmp.replace(path)
-            return True
-        return False
+        with self._lock:
+            self._load_annotations_index()
+            original_len = len(self._annotations_index)
+            self._annotations_index = [a for a in self._annotations_index if a.annotation_id != annotation_id]
+            if len(self._annotations_index) < original_len:
+                path = self._annotations_file()
+                tmp = path.with_suffix(".tmp")
+                with open(tmp, "w", encoding="utf-8") as f:
+                    for a in self._annotations_index:
+                        f.write(json.dumps(a.to_storage_dict(), ensure_ascii=False) + "\n")
+                tmp.replace(path)
+                return True
+            return False

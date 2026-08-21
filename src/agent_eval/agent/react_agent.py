@@ -7,9 +7,10 @@ ReAct-style scratchpad prompting with Thought/Action/Action Input/Observation.
 from __future__ import annotations
 
 import json
-import logging
 import re
 from typing import Any
+
+from agent_eval.logger import setup_logger
 
 from agent_eval.agent.base import BaseAgent, register_agent
 from agent_eval.llm import (
@@ -23,7 +24,7 @@ from agent_eval.llm import (
 )
 from agent_eval.trace import RunRecord, RunStatus
 
-logger = logging.getLogger("agent_eval.agent.react")
+logger = setup_logger("agent_eval.agent.react")
 
 
 REACT_SYSTEM_PROMPT = """You are a helpful AI assistant that solves tasks step by step using a ReAct (Reason + Act) loop.
@@ -138,7 +139,7 @@ class ReActAgent(BaseAgent):
                     final_answer = self._extract_last_content(messages) or (
                         "[Agent exceeded max steps without producing final answer]"
                     )
-        except Exception as e:
+        except (RuntimeError, ValueError, ConnectionError, TimeoutError, OSError, KeyError, AttributeError) as e:
             logger.exception(f"Agent run failed: {e}")
             cleaned = self._clean_final_answer(final_answer) if final_answer else None
             self._finalize_run(
@@ -178,7 +179,7 @@ class ReActAgent(BaseAgent):
                 temperature=self.config.temperature,
                 tools=tools_schema,
             )
-        except Exception as e:
+        except (RuntimeError, ValueError, ConnectionError, TimeoutError, OSError) as e:
             logger.error(f"LLM call failed on step {step}: {e}")
             raise
 

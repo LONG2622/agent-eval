@@ -35,6 +35,33 @@ evaluation:
   - answer_quality_keyword
   quality:
     keyword_match_threshold: 0.6
+    # AnswerQualityEvaluator thresholds
+    completeness_min_chars: 10            # min denominator for completeness ratio
+    completeness_overlength_factor: 2.5    # penalty if output_len > expected_len * this
+    completeness_overlength_penalty: 0.7   # multiplier applied when overlength
+    completeness_pass_threshold: 0.5
+    refusal_score: 0.3                     # relevance score when refusal detected
+    non_refusal_score: 0.9                # relevance baseline when no refusal
+    relevance_refusal_weight: 0.4          # weight for refusal score in relevance
+    relevance_overlap_weight: 0.6          # weight for keyword overlap in relevance
+    relevance_pass_threshold: 0.6
+    correctness_default: 0.5               # neutral correctness score when no expected
+    correctness_pass_threshold: 0.6
+    overall_pass_threshold: 0.6
+  tool_usage:
+    success_rate_threshold: 0.8            # min success rate to pass
+    overall_pass_threshold: 0.7           # min overall tool usage score to pass
+    success_weight: 0.6                   # weight of success_rate in overall score
+    redundancy_weight: 0.4                # weight of redundancy penalty in overall score
+    max_calls_per_step: 3                # sanity bound: max(total_calls) = steps * this
+  latency:
+    total_budget_ms: 60000                # max total latency in ms
+    avg_step_budget_ms: 10000              # max avg step latency in ms
+  token_cost:
+    chars_per_token_ratio: 4.0             # expected chars per token for efficiency
+    max_total_tokens: 128000               # token budget per run
+    max_cost_usd: 1.0                     # cost budget per run in USD
+    efficiency_threshold: 0.3              # min token efficiency to pass
   judge:
     enabled: ${JUDGE_ENABLED:-false}
     model: ${JUDGE_MODEL:-tju-llm}

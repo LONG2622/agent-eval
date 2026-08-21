@@ -99,6 +99,7 @@ class ToolUsageEvaluator(BaseEvaluator):
 
     def evaluate(self, run: RunRecord, spans: list[Span]) -> list[EvaluationResult]:
         results: list[EvaluationResult] = []
+        cfg = load_config().evaluation.tool_usage
         tool_spans = [s for s in spans if s.span_type == SpanType.TOOL_CALL]
         total_calls = len(tool_spans)
         success_calls = sum(1 for s in tool_spans if s.is_success)
@@ -125,7 +126,7 @@ class ToolUsageEvaluator(BaseEvaluator):
                 dimension=self.dimension,
                 sub_metric=SubMetric.TOOL_CALL_COUNT,
                 score=total_calls,
-                passed=total_calls <= max(10, run.total_steps * 3),  # sanity bound
+                passed=total_calls <= max(10, run.total_steps * cfg.max_calls_per_step),
                 details={"by_tool": dict(Counter(s.name for s in tool_spans))},
             )
         )
@@ -136,7 +137,7 @@ class ToolUsageEvaluator(BaseEvaluator):
                 dimension=self.dimension,
                 sub_metric=SubMetric.TOOL_SUCCESS_RATE,
                 score=round(success_rate, 4),
-                passed=success_rate >= 0.8,
+                passed=success_rate >= cfg.success_rate_threshold,
                 details={"success_calls": success_calls, "total_calls": total_calls},
             )
         )
@@ -151,16 +152,23 @@ class ToolUsageEvaluator(BaseEvaluator):
                 details={"redundant_count": redundant, "total_tool_calls": total_calls},
             )
         )
-        # Overall tool usage score: weighted combo
-        overall = round(0.6 * success_rate + 0.4 * max(0.0, 1.0 - redundant / max(total_calls, 1)), 4)
+        # Overall tool usage score: weighted combo from config
+        overall = round(
+            cfg.success_weight * success_rate
+            + cfg.redundancy_weight * max(0.0, 1.0 - redundant / max(total_calls, 1)),
+            4,
+        )
         results.append(
             EvaluationResult(
                 run_id=run.run_id,
                 evaluator=self.name,
                 dimension=self.dimension,
                 score=overall,
-                passed=overall >= 0.7,
-                details={"breakdown": f"success_rate({success_rate})*0.6 + redundancy_penalty*0.4"},
+                passed=overall >= cfg.overall_pass_threshold,
+                details={
+                    "breakdown": f"success_rate({success_rate})*{cfg.success_weight} "
+                    f"+ redundancy_penalty*{cfg.redundancy_weight}"
+                },
             )
         )
         return results
@@ -184,6 +192,7 @@ class AnswerQualityEvaluator(BaseEvaluator):
 
     def evaluate(self, run: RunRecord, spans: list[Span]) -> list[EvaluationResult]:
         results: list[EvaluationResult] = []
+        cfg = load_config().evaluation.quality
         output = (run.final_output or "").strip()
         expected = (run.expected_output or "").strip()
 
@@ -203,10 +212,10 @@ class AnswerQualityEvaluator(BaseEvaluator):
         # Length-based completeness
         output_len = len(output)
         expected_len = len(expected) if expected else output_len
-        completeness = min(1.0, output_len / max(expected_len, 10))
-        # Penalty if way too long (2x expected)
-        if expected_len and output_len > expected_len * 2.5:
-            completeness *= 0.7
+        completeness = min(1.0, output_len / max(expected_len, cfg.completeness_min_chars))
+        # Penalty if way too long
+        if expected_len and output_len > expected_len * cfg.completeness_overlength_factor:
+            completeness *= cfg.completeness_overlength_penalty
 
         results.append(
             EvaluationResult(
@@ -215,7 +224,7 @@ class AnswerQualityEvaluator(BaseEvaluator):
                 dimension=self.dimension,
                 sub_metric=SubMetric.COMPLETENESS,
                 score=round(completeness, 4),
-                passed=completeness >= 0.5,
+                passed=completeness >= cfg.completeness_pass_threshold,
                 details={
                     "output_chars": output_len,
                     "expected_chars": expected_len,
@@ -226,14 +235,17 @@ class AnswerQualityEvaluator(BaseEvaluator):
         # Relevance: check for refusal patterns
         output_lower = output.lower()
         refused = any(p in output_lower for p in self.REFUSAL_PATTERNS)
-        relevance = 0.3 if refused else 0.9
+        relevance = cfg.refusal_score if refused else cfg.non_refusal_score
         # Boost relevance if expected keywords present
         if expected:
             exp_words = set(re.findall(r"[a-z0-9\u4e00-\u9fff]{2,}", expected.lower()))
             out_words = set(re.findall(r"[a-z0-9\u4e00-\u9fff]{2,}", output_lower))
             if exp_words and out_words:
                 overlap = len(exp_words & out_words) / len(exp_words)
-                relevance = round(min(1.0, relevance * 0.4 + overlap * 0.6), 4)
+                relevance = round(
+                    min(1.0, relevance * cfg.relevance_refusal_weight + overlap * cfg.relevance_overlap_weight),
+                    4,
+                )
 
         results.append(
             EvaluationResult(
@@ -242,7 +254,7 @@ class AnswerQualityEvaluator(BaseEvaluator):
                 dimension=self.dimension,
                 sub_metric=SubMetric.RELEVANCE,
                 score=relevance,
-                passed=relevance >= 0.6,
+                passed=relevance >= cfg.relevance_pass_threshold,
                 details={
                     "refusal_detected": refused,
                     "expected_keyword_overlap": round(
@@ -259,7 +271,7 @@ class AnswerQualityEvaluator(BaseEvaluator):
         )
 
         # Correctness: use keyword_match from SuccessRateEvaluator if expected exists
-        correctness = 0.5  # default neutral
+        correctness = cfg.correctness_default  # default neutral
         if expected:
             exp_words = set(re.findall(r"[a-z0-9\u4e00-\u9fff]{2,}", expected.lower()))
             if exp_words:
@@ -272,7 +284,7 @@ class AnswerQualityEvaluator(BaseEvaluator):
                 dimension=self.dimension,
                 sub_metric=SubMetric.CORRECTNESS,
                 score=correctness,
-                passed=correctness >= 0.6,
+                passed=correctness >= cfg.correctness_pass_threshold,
                 details={
                     "method": "keyword_overlap_with_expected",
                     "score_range": "0.0~1.0",
@@ -289,7 +301,7 @@ class AnswerQualityEvaluator(BaseEvaluator):
                 evaluator=self.name,
                 dimension=self.dimension,
                 score=overall,
-                passed=overall >= 0.6,
+                passed=overall >= cfg.overall_pass_threshold,
                 details={
                     "sub_scores": {
                         "completeness": completeness,
@@ -316,6 +328,7 @@ class LatencyEvaluator(BaseEvaluator):
 
     def evaluate(self, run: RunRecord, spans: list[Span]) -> list[EvaluationResult]:
         results: list[EvaluationResult] = []
+        cfg = load_config().evaluation.latency
         total_latency = run.total_latency_ms
 
         llm_latencies = [s.latency_ms for s in spans if s.span_type == SpanType.LLM_CALL]
@@ -338,7 +351,7 @@ class LatencyEvaluator(BaseEvaluator):
                 dimension=self.dimension,
                 sub_metric=SubMetric.TOTAL_LATENCY_MS,
                 score=total_latency,
-                passed=total_latency <= 60_000,  # 60s budget
+                passed=total_latency <= cfg.total_budget_ms,
                 details={
                     "unit": "milliseconds",
                     "llm_ms": sum_llm,
@@ -357,7 +370,7 @@ class LatencyEvaluator(BaseEvaluator):
                 dimension=self.dimension,
                 sub_metric=SubMetric.AVG_STEP_LATENCY_MS,
                 score=round(avg_step, 1),
-                passed=avg_step <= 10_000,
+                passed=avg_step <= cfg.avg_step_budget_ms,
                 details={"unit": "milliseconds", "total_steps": run.total_steps},
             )
         )
@@ -377,6 +390,7 @@ class TokenCostEvaluator(BaseEvaluator):
 
     def evaluate(self, run: RunRecord, spans: list[Span]) -> list[EvaluationResult]:
         results: list[EvaluationResult] = []
+        cfg = load_config().evaluation.token_cost
         t = run.tokens
         cost = run.total_cost
 
@@ -384,7 +398,7 @@ class TokenCostEvaluator(BaseEvaluator):
         final_chars = len(run.final_output or "")
         completion_tokens = max(t.completion_tokens, 1)
         chars_per_token = final_chars / completion_tokens
-        efficiency = round(min(1.0, chars_per_token / 4.0), 4)  # ~4 chars/token expected
+        efficiency = round(min(1.0, chars_per_token / cfg.chars_per_token_ratio), 4)
 
         results.append(
             EvaluationResult(
@@ -413,7 +427,7 @@ class TokenCostEvaluator(BaseEvaluator):
                 dimension=self.dimension,
                 sub_metric=SubMetric.TOTAL_TOKENS,
                 score=t.total_tokens,
-                passed=t.total_tokens <= 128_000,
+                passed=t.total_tokens <= cfg.max_total_tokens,
                 details={"unit": "tokens"},
             )
         )
@@ -424,7 +438,7 @@ class TokenCostEvaluator(BaseEvaluator):
                 dimension=self.dimension,
                 sub_metric=SubMetric.TOTAL_COST,
                 score=round(cost, 6),
-                passed=cost <= 1.0,  # under $1 per run
+                passed=cost <= cfg.max_cost_usd,
                 details={"unit": "USD"},
             )
         )
@@ -435,7 +449,7 @@ class TokenCostEvaluator(BaseEvaluator):
                 evaluator=self.name,
                 dimension=self.dimension,
                 score=efficiency,
-                passed=efficiency >= 0.3,
+                passed=efficiency >= cfg.efficiency_threshold,
                 details={
                     "metric": "token_efficiency",
                     "chars_per_completion_token": round(chars_per_token, 3),

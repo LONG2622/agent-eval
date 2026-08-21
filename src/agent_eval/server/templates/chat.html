@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent Chat - Agent Eval</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; color: #2c3e50; height: 100vh; display: flex; flex-direction: column; }
+  .header { background: linear-gradient(135deg, #ff6b6b 0%, #ffa726 100%); color: white; padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; }
+  .header h1 { font-size: 18px; font-weight: 600; }
+  .header a { color: white; text-decoration: none; opacity: 0.9; font-size: 14px; margin-left: 16px; }
+  .header a:hover { text-decoration: underline; }
+  .nav-links { display: flex; gap: 4px; }
+  .nav-links a { background: rgba(255,255,255,0.15); padding: 6px 12px; border-radius: 6px; font-size: 13px; }
+  .nav-links a.active { background: rgba(255,255,255,0.3); }
+  .chat-container { flex: 1; display: flex; overflow: hidden; }
+  .chat-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  .chat-sidebar { width: 280px; background: white; border-left: 1px solid #ecf0f1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+  .sidebar-title { font-size: 13px; font-weight: 600; color: #7f8c8d; text-transform: uppercase; letter-spacing: 0.5px; }
+  .config-group label { display: block; font-size: 12px; font-weight: 500; margin-bottom: 4px; color: #34495e; }
+  .config-group input, .config-group select { width: 100%; padding: 8px 10px; border: 1px solid #ecf0f1; border-radius: 6px; font-size: 13px; font-family: inherit; }
+  .config-group input:focus, .config-group select:focus { outline: none; border-color: #ff6b6b; }
+  .info-tip { font-size: 12px; color: #95a5a6; line-height: 1.5; background: #f8f9fa; padding: 10px; border-radius: 6px; }
+  .messages { flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 16px; }
+  .message { max-width: 85%; display: flex; gap: 12px; }
+  .message.user { align-self: flex-end; }
+  .message.agent { align-self: flex-start; }
+  .avatar { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+  .message.user .avatar { background: #ff6b6b; color: white; }
+  .message.agent .avatar { background: linear-gradient(135deg, #667eea, #764ba2); color: white; }
+  .bubble { padding: 12px 16px; border-radius: 12px; line-height: 1.5; font-size: 14px; word-break: break-word; }
+  .message.user .bubble { background: #ff6b6b; color: white; border-bottom-right-radius: 4px; }
+  .message.agent .bubble { background: white; color: #2c3e50; border: 1px solid #ecf0f1; border-bottom-left-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+  .agent-meta { font-size: 11px; color: #95a5a6; margin-top: 6px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .agent-meta span { background: #f8f9fa; padding: 2px 8px; border-radius: 10px; }
+  .steps-box { margin-top: 10px; background: #fafbfc; border: 1px solid #ecf0f1; border-radius: 8px; padding: 10px; max-height: 350px; overflow-y: auto; }
+  .steps-box-header { font-size: 12px; font-weight: 600; color: #7f8c8d; margin-bottom: 6px; display: flex; justify-content: space-between; cursor: pointer; }
+  .step-item { padding: 6px 10px; margin-bottom: 6px; background: white; border-left: 3px solid #667eea; border-radius: 4px; font-size: 12px; }
+  .step-item.tool { border-left-color: #f39c12; }
+  .step-item.error { border-left-color: #e74c3c; }
+  .step-title { font-weight: 500; font-size: 12px; color: #34495e; margin-bottom: 2px; }
+  .step-detail { color: #7f8c8d; font-size: 11px; max-height: 100px; overflow-x: auto; }
+  .step-detail pre { margin: 4px 0; background: #2c3e50; color: #ecf0f1; padding: 6px 8px; border-radius: 4px; }
+  .eval-scores { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .eval-pill { background: white; padding: 4px 10px; border-radius: 12px; font-size: 11px; border: 1px solid #ecf0f1; }
+  .eval-pill.high { border-color: #27ae60; color: #1e8449; }
+  .eval-pill.medium { border-color: #f39c12; color: #ca6f1e; }
+  .eval-pill.low { border-color: #e74c3c; color: #c0392b; }
+  .input-area { border-top: 1px solid #ecf0f1; padding: 16px 24px; background: white; display: flex; gap: 12px; align-items: flex-end; }
+  .input-wrap { flex: 1; position: relative; }
+  .input-wrap textarea { width: 100%; padding: 12px 14px; border: 1px solid #ecf0f1; border-radius: 10px; font-size: 14px; font-family: inherit; resize: none; min-height: 48px; max-height: 200px; line-height: 1.5; }
+  .input-wrap textarea:focus { outline: none; border-color: #ff6b6b; }
+  .send-btn { padding: 12px 20px; background: #ff6b6b; color: white; border: none; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+  .send-btn:hover { background: #e55a5a; }
+  .send-btn:disabled { background: #bdc3c7; cursor: not-allowed; }
+  .typing { display: inline-flex; gap: 4px; padding: 4px 0; }
+  .typing span { width: 6px; height: 6px; background: #95a5a6; border-radius: 50%; animation: typing 1.2s infinite; }
+  .typing span:nth-child(2) { animation-delay: 0.2s; }
+  .typing span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes typing { 0%, 60%, 100% { transform: translateY(0); opacity: 0.4; } 30% { transform: translateY(-4px); opacity: 1; } }
+  .empty-chat { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #95a5a6; padding: 40px; text-align: center; }
+  .empty-chat .icon { font-size: 48px; margin-bottom: 12px; opacity: 0.5; }
+  .empty-chat h3 { color: #7f8c8d; margin-bottom: 6px; }
+  .empty-chat p { font-size: 13px; max-width: 400px; line-height: 1.6; }
+  .sample-prompts { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 20px; max-width: 600px; }
+  .sample-prompt { padding: 12px; background: white; border: 1px solid #ecf0f1; border-radius: 10px; cursor: pointer; font-size: 13px; transition: all 0.2s; text-align: left; color: #34495e; }
+  .sample-prompt:hover { border-color: #ff6b6b; transform: translateY(-1px); }
+  .message-actions { margin-top: 6px; display: flex; gap: 8px; }
+  .message-actions a { font-size: 11px; color: #95a5a6; text-decoration: none; }
+  .message-actions a:hover { color: #ff6b6b; text-decoration: underline; }
+  @media (max-width: 768px) {
+    .chat-sidebar { display: none; }
+    .message { max-width: 95%; }
+  }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>💬 Agent Chat</h1>
+  <div class="nav-links">
+    <a href="/">Dashboard</a>
+    <a href="/chat" class="active">Chat</a>
+    <a href="/errors">🔴 Errors</a>
+    <a href="/compare">📊 Compare</a>
+  </div>
+</div>
+<div class="chat-container">
+  <div class="chat-main">
+    <div class="messages" id="messages">
+      <div class="empty-chat" id="emptyChat">
+        <div class="icon">🤖</div>
+        <h3>Chat with your Agent</h3>
+        <p>Ask anything below. The ReAct Agent will use tools (calculator, search, etc.) to reason step-by-step before answering. Try these examples:</p>
+        <div class="sample-prompts">
+          <button class="sample-prompt" onclick="sendPrompt('Calculate sqrt(144) + 5^2 step by step')">📐 Calculate sqrt(144) + 5²</button>
+          <button class="sample-prompt" onclick="sendPrompt('What is 25% of 800? Answer just the number')">🔢 25% of 800</button>
+          <button class="sample-prompt" onclick="sendPrompt('What time is it now?')">🕐 What time is it?</button>
+          <button class="sample-prompt" onclick="sendPrompt('Tell me about Agent evaluation frameworks')">📚 About Agent Eval</button>
+        </div>
+      </div>
+    </div>
+    <div class="input-area">
+      <div class="input-wrap">
+        <textarea id="messageInput" placeholder="Type your message... (Shift+Enter for newline, Enter to send)" rows="2"></textarea>
+      </div>
+      <button class="send-btn" id="sendBtn" onclick="sendMessage()">Send</button>
+    </div>
+  </div>
+  <div class="chat-sidebar">
+    <div class="sidebar-title">Agent Configuration</div>
+    <div class="config-group">
+      <label>Agent Type</label>
+      <select id="cfgAgent">
+        <option value="react">ReAct (default)</option>
+      </select>
+    </div>
+    <div class="config-group">
+      <label>Model</label>
+      <select id="cfgModel">
+        <option value="">Loading models...</option>
+      </select>
+      <div id="cfgModelHint" class="info-tip" style="margin-top:6px;font-size:12px;"></div>
+    </div>
+    <div class="config-group">
+      <label>Max Steps</label>
+      <input type="number" id="cfgSteps" value="10" min="1" max="50">
+    </div>
+    <div class="config-group">
+      <label>Temperature</label>
+      <input type="number" id="cfgTemp" value="0.7" step="0.1" min="0" max="2">
+    </div>
+    <div class="config-group">
+      <label>Expected Output (optional)</label>
+      <input type="text" id="cfgExpected" placeholder="Ground truth for eval">
+    </div>
+    <div class="sidebar-title" style="margin-top:10px;">About</div>
+    <div class="info-tip">
+      Each message creates a run in the dataset, trace, and evaluation records. You can inspect the full trace or add annotations via Dashboard / links below each answer.
+    </div>
+  </div>
+</div>
+
+<script>
+const API = window.location.origin;
+const messagesEl = document.getElementById('messages');
+const emptyChatEl = document.getElementById('emptyChat');
+const inputEl = document.getElementById('messageInput');
+const sendBtn = document.getElementById('sendBtn');
+const cfgModelSel = document.getElementById('cfgModel');
+const cfgModelHint = document.getElementById('cfgModelHint');
+
+let chatId = 0;
+let MODEL_LIST = [];
+
+// ---- Load available models and populate the dropdown ----
+fetch(API + '/api/models')
+  .then(r => r.json())
+  .then(data => {
+    MODEL_LIST = data.models || [];
+    cfgModelSel.innerHTML = '';
+    const defaultOpt = document.createElement('option');
+    defaultOpt.value = '';
+    defaultOpt.textContent = `📌 Default (${data.default_model || 'from config'})`;
+    cfgModelSel.appendChild(defaultOpt);
+    for (const m of MODEL_LIST) {
+      const opt = document.createElement('option');
+      opt.value = m.id;
+      const badges = [];
+      if (m.supports_chinese) badges.push('🇨🇳 中文');
+      if (!m.supports_function_calling) badges.push('⚠️ 无FC');
+      const badgeStr = badges.length ? ' [' + badges.join(' ') + ']' : '';
+      opt.textContent = m.display_name + badgeStr + (m.is_default ? ' ✅' : '');
+      if (m.is_default) {
+        // Keep the "Default" option selected by default; mark default in UI
+        opt.textContent += ' (默认)';
+      }
+      cfgModelSel.appendChild(opt);
+    }
+    updateModelHint();
+  })
+  .catch(err => {
+    cfgModelSel.innerHTML = '<option value="">Failed to load models</option>';
+  });
+
+cfgModelSel.addEventListener('change', updateModelHint);
+function updateModelHint() {
+  const id = cfgModelSel.value;
+  if (!id) {
+    cfgModelHint.textContent = '';
+    return;
+  }
+  const m = MODEL_LIST.find(x => x.id === id);
+  if (m && m.description) {
+    cfgModelHint.textContent = m.description;
+  }
+}
+
+inputEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+});
+
+function sendPrompt(p) {
+  inputEl.value = p;
+  sendMessage();
+}
+
+function addUserMessage(text) {
+  hideEmpty();
+  chatId++;
+  const msg = document.createElement('div');
+  msg.className = 'message user';
+  msg.id = 'msg-' + chatId;
+  msg.innerHTML = `
+    <div class="avatar">U</div>
+    <div class="bubble" style="white-space:pre-wrap;">${escapeHtml(text)}</div>
+  `;
+  messagesEl.appendChild(msg);
+  scrollBottom();
+  return chatId;
+}
+
+function addAgentPlaceholder() {
+  chatId++;
+  const msg = document.createElement('div');
+  msg.className = 'message agent';
+  msg.id = 'msg-' + chatId;
+  msg.innerHTML = `
+    <div class="avatar">A</div>
+    <div class="bubble">
+      <div class="typing"><span></span><span></span><span></span></div>
+      <div style="font-size:12px;color:#95a5a6;margin-top:8px;">Agent is thinking...</div>
+    </div>
+  `;
+  messagesEl.appendChild(msg);
+  scrollBottom();
+  return chatId;
+}
+
+function fillAgentMessage(id, data) {
+  const run = data.run;
+  const steps = buildSteps(data.spans);
+  const evals = buildEvals(data.evaluation);
+  const el = document.getElementById('msg-' + id);
+  const statusClass = run.status === 'success' ? 'success' : 'failed';
+  const statusIcon = run.status === 'success' ? '✅' : '❌';
+  el.querySelector('.bubble').innerHTML = `
+    <div style="white-space:pre-wrap;">${escapeHtml(run.final_output || '[no output]')}</div>
+    <div class="agent-meta">
+      <span>${statusIcon} ${run.status}</span>
+      <span>⏱ ${run.total_latency_ms} ms</span>
+      <span>🔑 ${run.tokens ? run.tokens.total_tokens : 0} tokens</span>
+      <span>⚡ ${run.total_steps} steps</span>
+      <span>💰 $${run.total_cost ? run.total_cost.toFixed(5) : '0.00000'}</span>
+    </div>
+    ${steps}
+    ${evals}
+    <div class="message-actions">
+      <a href="/trace/${run.run_id}" target="_blank">🔍 Full trace</a>
+      <a href="/annotate/${run.run_id}" target="_blank">✏️ Annotate</a>
+    </div>
+  `;
+  scrollBottom();
+}
+
+function fillAgentError(id, err) {
+  const el = document.getElementById('msg-' + id);
+  el.querySelector('.bubble').innerHTML = `
+    <div style="color:#e74c3c;">❌ Failed to run agent</div>
+    <div style="font-size:12px;color:#95a5a6;margin-top:6px;">${escapeHtml(err)}</div>
+  `;
+}
+
+function buildSteps(spans) {
+  if (!spans || spans.length === 0) return '';
+  const byStep = {};
+  for (const s of spans) {
+    const i = s.step_index;
+    if (!byStep[i]) byStep[i] = [];
+    byStep[i].push(s);
+  }
+  let html = `<div class="steps-box" onclick="toggleStepsBox(this)">
+    <div class="steps-box-header"><span>🕐 Reasoning Steps (${spans.length} spans)</span><span>▼</span></div>
+    <div style="display:none;">`;
+  const sortedKeys = Object.keys(byStep).map(Number).sort((a,b)=>a-b);
+  for (const idx of sortedKeys) {
+    const list = byStep[idx];
+    const mainSpan = list[0];
+    const hasErr = list.some(s => s.is_success === false);
+    const isTool = list.some(s => s.span_type === 'tool_call');
+    const cls = hasErr ? 'step-item error' : isTool ? 'step-item tool' : 'step-item';
+    const label = isTool ? 'Tool Call' : list.some(s=>s.span_type==='llm_call') ? 'LLM Call' : 'Thought/Step';
+    const name = mainSpan.name || `Step ${idx}`;
+    const outputData = mainSpan.output_data && Object.keys(mainSpan.output_data).length > 0
+      ? `<div class="step-detail"><b>Output:</b><pre>${shorten(JSON.stringify(mainSpan.output_data, null, 2), 500)}</pre></div>` : '';
+    const inputData = mainSpan.input_data && Object.keys(mainSpan.input_data).length > 0
+      ? `<div class="step-detail"><b>Input:</b><pre>${shorten(JSON.stringify(mainSpan.input_data, null, 2), 300)}</pre></div>` : '';
+    const tokens = mainSpan.tokens && mainSpan.tokens.total_tokens > 0
+      ? `<div class="step-detail">Tokens: ${mainSpan.tokens.total_tokens}</div>` : '';
+    const lat = mainSpan.latency_ms ? `<div class="step-detail">Latency: ${mainSpan.latency_ms}ms</div>` : '';
+    html += `<div class="${cls}">
+      <div class="step-title">${label}: ${escapeHtml(name)} ${hasErr ? '❌' : '✅'}</div>
+      ${tokens}${lat}${inputData}${outputData}
+    </div>`;
+  }
+  html += '</div></div>';
+  return html;
+}
+
+function toggleStepsBox(el) {
+  const inner = el.querySelector('div:nth-child(2)');
+  const header = el.querySelector('.steps-box-header span:last-child');
+  if (inner.style.display === 'none') {
+    inner.style.display = 'block';
+    header.textContent = '▲';
+  } else {
+    inner.style.display = 'none';
+    header.textContent = '▼';
+  }
+}
+
+function buildEvals(evals) {
+  if (!evals || evals.length === 0) return '';
+  const dims = {};
+  for (const e of evals) {
+    if (e.sub_metric === null || e.sub_metric === undefined) {
+      dims[e.dimension] = e.score;
+    }
+  }
+  if (Object.keys(dims).length === 0) return '';
+  let html = '<div class="eval-scores">';
+  for (const [d, s] of Object.entries(dims)) {
+    const cls = s >= 0.7 ? 'high' : s >= 0.4 ? 'medium' : 'low';
+    html += `<span class="eval-pill ${cls}">${d.replace(/_/g,' ')}: ${(s*100).toFixed(0)}%</span>`;
+  }
+  html += '</div>';
+  return html;
+}
+
+async function sendMessage() {
+  const text = inputEl.value.trim();
+  if (!text) return;
+  inputEl.value = '';
+  addUserMessage(text);
+  const phId = addAgentPlaceholder();
+  sendBtn.disabled = true;
+  try {
+    const res = await fetch(API + '/api/runs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        task: text,
+        agent_type: document.getElementById('cfgAgent').value,
+        model: document.getElementById('cfgModel').value || null,
+        temperature: parseFloat(document.getElementById('cfgTemp').value) || null,
+        max_steps: parseInt(document.getElementById('cfgSteps').value) || 10,
+        expected_output: document.getElementById('cfgExpected').value || null,
+      })
+    });
+    if (!res.ok) {
+      const errTxt = await res.text();
+      throw new Error(`HTTP ${res.status}: ${errTxt.slice(0, 200)}`);
+    }
+    const data = await res.json();
+    fillAgentMessage(phId, data);
+  } catch (e) {
+    fillAgentError(phId, String(e));
+  } finally {
+    sendBtn.disabled = false;
+    inputEl.focus();
+  }
+}
+
+function scrollBottom() {
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+
+function hideEmpty() {
+  if (emptyChatEl) {
+    emptyChatEl.remove();
+  }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function shorten(s, n) {
+  return s && s.length > n ? s.slice(0, n) + '\n...(truncated)' : s || '';
+}
+</script>
+</body>
+</html>

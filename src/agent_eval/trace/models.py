@@ -5,14 +5,14 @@ from __future__ import annotations
 import enum
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 
 def _utc_timestamp() -> str:
-    return datetime.utcnow().isoformat(timespec="milliseconds") + "Z"
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 class SpanType(str, enum.Enum):

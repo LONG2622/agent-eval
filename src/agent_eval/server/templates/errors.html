@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Error Analysis - Agent Eval</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; color: #2c3e50; }
+  .header { background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%); color: white; padding: 20px 32px; display: flex; align-items: center; justify-content: space-between; }
+  .header h1 { font-size: 22px; font-weight: 600; }
+  .nav-links { display: flex; gap: 6px; }
+  .nav-links a { color: white; text-decoration: none; background: rgba(255,255,255,0.15); padding: 6px 12px; border-radius: 6px; font-size: 13px; }
+  .nav-links a:hover { background: rgba(255,255,255,0.25); }
+  .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .kpi-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+  .kpi-card .label { font-size: 12px; color: #7f8c8d; text-transform: uppercase; letter-spacing: 0.5px; }
+  .kpi-card .value { font-size: 28px; font-weight: 700; margin-top: 8px; }
+  .kpi-card .value.red { color: #e74c3c; }
+  .kpi-card .value.green { color: #27ae60; }
+  .kpi-card .value.orange { color: #f39c12; }
+  .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+  .chart-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+  .chart-card h3 { font-size: 15px; margin-bottom: 12px; color: #34495e; }
+  .chart-container { width: 100%; height: 300px; }
+  .error-table { background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); overflow: hidden; }
+  .error-table h3 { padding: 16px 20px; border-bottom: 1px solid #ecf0f1; font-size: 15px; color: #34495e; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #f8f9fa; text-align: left; padding: 10px 16px; font-size: 12px; color: #7f8c8d; text-transform: uppercase; letter-spacing: 0.5px; }
+  td { padding: 10px 16px; border-top: 1px solid #f1f2f6; font-size: 13px; }
+  tr:hover td { background: #f8f9fa; }
+  .cat-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; color: white; }
+  .cat-llm_timeout { background: #f39c12; }
+  .cat-llm_rate_limit { background: #e67e22; }
+  .cat-file_system_error { background: #16a085; }
+  .cat-llm_auth_error { background: #8e44ad; }
+  .cat-llm_bad_request { background: #e74c3c; }
+  .cat-llm_not_found { background: #c0392b; }
+  .cat-tool_execution_error { background: #d35400; }
+  .cat-llm_format_error { background: #9b59b6; }
+  .cat-max_steps_exceeded { background: #3498db; }
+  .cat-network_error { background: #1abc9c; }
+  .cat-internal_error { background: #34495e; }
+  .cat-unknown { background: #95a5a6; }
+  .run-link { font-family: monospace; color: #2980b9; text-decoration: none; font-size: 12px; }
+  .run-link:hover { text-decoration: underline; }
+  .err-text { color: #7f8c8d; font-size: 12px; max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .loading { text-align: center; padding: 40px; color: #95a5a6; }
+  @media (max-width: 768px) {
+    .chart-row { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>🔴 Error Analysis</h1>
+  <div class="nav-links">
+    <a href="/">Dashboard</a>
+    <a href="/chat">Chat</a>
+    <a href="/errors" class="active">Errors</a>
+    <a href="/compare">📊 Compare</a>
+  </div>
+</div>
+<div class="container">
+  <div class="kpi-grid" id="kpiGrid">
+    <div class="loading">Loading...</div>
+  </div>
+  <div class="chart-row">
+    <div class="chart-card">
+      <h3>Error Distribution</h3>
+      <div class="chart-container" id="pieChart"></div>
+    </div>
+    <div class="chart-card">
+      <h3>Success vs Failure</h3>
+      <div class="chart-container" id="barChart"></div>
+    </div>
+  </div>
+  <div class="error-table">
+    <h3>Recent Failed Runs</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Category</th>
+          <th>Run ID</th>
+          <th>Task</th>
+          <th>Error</th>
+          <th>Latency</th>
+          <th>Steps</th>
+        </tr>
+      </thead>
+      <tbody id="errorTableBody">
+        <tr><td colspan="6" class="loading">Loading...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+<script>
+async function loadData() {
+  const res = await fetch('/api/errors/summary');
+  const data = await res.json();
+
+  // KPI cards
+  document.getElementById('kpiGrid').innerHTML = `
+    <div class="kpi-card"><div class="label">Total Runs</div><div class="value">${data.total_runs}</div></div>
+    <div class="kpi-card"><div class="label">Success</div><div class="value green">${data.total_success}</div></div>
+    <div class="kpi-card"><div class="label">Failed</div><div class="value red">${data.total_failed}</div></div>
+    <div class="kpi-card"><div class="label">Failure Rate</div><div class="value orange">${(data.failure_rate * 100).toFixed(1)}%</div></div>
+    <div class="kpi-card"><div class="label">Error Types</div><div class="value">${data.by_category.length}</div></div>
+  `;
+
+  // Pie chart
+  const pieChart = echarts.init(document.getElementById('pieChart'));
+  const pieColors = ['#f39c12','#e67e22','#8e44ad','#e74c3c','#c0392b','#d35400','#9b59b6','#3498db','#1abc9c','#34495e','#95a5a6'];
+  pieChart.setOption({
+    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+    legend: { bottom: 0, type: 'scroll' },
+    series: [{
+      type: 'pie', radius: ['40%','70%'],
+      label: { show: true, formatter: '{b}\n{c}', fontSize: 11 },
+      data: data.by_category.map((c,i) => ({ value: c.count, name: c.label, itemStyle: { color: pieColors[i % pieColors.length] } })),
+    }],
+  });
+
+  // Bar chart
+  const barChart = echarts.init(document.getElementById('barChart'));
+  barChart.setOption({
+    tooltip: { trigger: 'axis' },
+    xAxis: { type: 'category', data: ['Success','Failed'] },
+    yAxis: { type: 'value' },
+    series: [{
+      type: 'bar', barWidth: '40%',
+      data: [
+        { value: data.total_success, itemStyle: { color: '#27ae60' } },
+        { value: data.total_failed, itemStyle: { color: '#e74c3c' } },
+      ],
+      label: { show: true, position: 'top', fontSize: 14, fontWeight: 'bold' },
+    }],
+  });
+
+  // Error table
+  const tbody = document.getElementById('errorTableBody');
+  if (data.recent_errors.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="loading">No failed runs found</td></tr>';
+    return;
+  }
+  tbody.innerHTML = data.recent_errors.map(e => `
+    <tr>
+      <td><span class="cat-badge cat-${e.category_code}">${e.category_label}</span></td>
+      <td><a class="run-link" href="/trace/${e.run_id}">${e.run_id.slice(0,12)}</a></td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(e.task)}</td>
+      <td class="err-text" title="${escapeHtml(e.error_message)}">${escapeHtml(e.error_message)}</td>
+      <td>${e.latency_ms}ms</td>
+      <td>${e.steps}</td>
+    </tr>
+  `).join('');
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+loadData();
+</script>
+</body>
+</html>

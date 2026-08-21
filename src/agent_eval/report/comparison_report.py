@@ -172,7 +172,7 @@ def run_comparison(storage: JSONLStorage | None = None) -> tuple[ComparisonSumma
                     auto_dims[dim] = statistics.mean(scores) if scores else 0.0
                 if auto_dims:
                     auto_overall = statistics.mean(auto_dims.values())
-            except Exception:
+            except (ValueError, TypeError, ZeroDivisionError):
                 pass
 
         human_norm = None
