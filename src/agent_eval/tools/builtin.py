@@ -141,7 +141,7 @@ def read_file(file_path: str, max_chars: int = 5000) -> Any:
         max_chars: Maximum number of characters to return (default 5000).
     """
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, encoding="utf-8") as f:
             content = f.read(max_chars)
         suffix = "" if len(content) < max_chars else f"\n... [truncated at {max_chars} chars]"
         return content + suffix
@@ -149,7 +149,7 @@ def read_file(file_path: str, max_chars: int = 5000) -> Any:
         return ToolResult(output="", success=False, error=f"File not found: {file_path}")
     except UnicodeDecodeError:
         return ToolResult(output="", success=False, error=f"Cannot decode file {file_path} as UTF-8")
-    except (OSError, IOError, UnicodeDecodeError) as e:
+    except OSError as e:
         return ToolResult(output="", success=False, error=f"Error reading file: {e}")
 
 

@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
-
+from agent_eval.evaluation.base import SubMetric
 from agent_eval.evaluation.builtin import (
     AnswerQualityEvaluator,
     LatencyEvaluator,
@@ -11,9 +10,7 @@ from agent_eval.evaluation.builtin import (
     TokenCostEvaluator,
     ToolUsageEvaluator,
 )
-from agent_eval.evaluation.base import EvalDimension, SubMetric
-from agent_eval.trace.models import RunRecord, RunStatus, Span, SpanType, TokenUsage
-
+from agent_eval.trace.models import RunRecord, RunStatus, Span, SpanType
 
 # ============================================================
 # SuccessRateEvaluator Tests

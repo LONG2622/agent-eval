@@ -4,11 +4,17 @@ from __future__ import annotations
 
 from typing import Any
 
-from agent_eval.logger import setup_logger
 from agent_eval.llm.messages import Message
-from agent_eval.llm.providers.base import LLMCallback, LLMCallContext, LLMCallOptions, LLMProvider, LLMResponse
+from agent_eval.llm.providers.base import (
+    LLMCallback,
+    LLMCallContext,
+    LLMCallOptions,
+    LLMProvider,
+    LLMResponse,
+)
 from agent_eval.llm.providers.openai_provider import OpenAIProvider
 from agent_eval.llm.tokenizer import calculate_cost
+from agent_eval.logger import setup_logger
 
 logger = setup_logger("agent_eval.llm.gateway")
 

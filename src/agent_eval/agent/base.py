@@ -58,7 +58,7 @@ class BaseAgent(ABC):
 
     # ---- Extension points ----
 
-    def setup(self) -> None:
+    def setup(self) -> None:  # noqa: B027 - optional hook
         """Initialize per-agent state (memory, prompt templates, etc.)."""
         pass
 
@@ -71,7 +71,7 @@ class BaseAgent(ABC):
         """
         raise NotImplementedError
 
-    def cleanup(self) -> None:
+    def cleanup(self) -> None:  # noqa: B027 - optional hook
         """Release resources if needed."""
         pass
 

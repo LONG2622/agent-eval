@@ -17,9 +17,9 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
-import time
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from agent_eval.config import load_config
 from agent_eval.trace.models import RunRecord, Span
@@ -294,8 +294,7 @@ class SQLiteStorage:
     # ------------------------------------------------------------------
     # Evaluations
     # ------------------------------------------------------------------
-    def save_evaluation(self, result: "EvaluationResult") -> None:
-        from agent_eval.evaluation.base import EvaluationResult  # noqa: F811
+    def save_evaluation(self, result: EvaluationResult) -> None:
 
         self._conn.execute(
             "INSERT INTO evaluations (run_id, evaluator, dimension, sub_metric, score, "
@@ -313,8 +312,7 @@ class SQLiteStorage:
         )
         self._conn.commit()
 
-    def save_evaluations(self, results: Iterable["EvaluationResult"]) -> None:
-        from agent_eval.evaluation.base import EvaluationResult  # noqa: F811
+    def save_evaluations(self, results: Iterable[EvaluationResult]) -> None:
 
         rows = [
             (
@@ -334,7 +332,7 @@ class SQLiteStorage:
         )
         self._conn.commit()
 
-    def load_evaluations(self, run_id: str) -> list["EvaluationResult"]:
+    def load_evaluations(self, run_id: str) -> list[EvaluationResult]:
         from agent_eval.evaluation.base import EvaluationResult  # noqa: F811
 
         rows = self._conn.execute(
@@ -393,7 +391,7 @@ class SQLiteStorage:
         # Import runs
         runs_file = run_dir / "runs.jsonl"
         if runs_file.exists():
-            with open(runs_file, "r", encoding="utf-8") as f:
+            with open(runs_file, encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
                     if not line:
@@ -410,9 +408,8 @@ class SQLiteStorage:
             for trace_file in trace_dir.glob("*.jsonl"):
                 if trace_file.name == "runs.jsonl":
                     continue
-                trace_id = trace_file.stem
                 spans: list[Span] = []
-                with open(trace_file, "r", encoding="utf-8") as f:
+                with open(trace_file, encoding="utf-8") as f:
                     for line in f:
                         line = line.strip()
                         if not line:

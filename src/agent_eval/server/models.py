@@ -3,26 +3,24 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from pydantic import BaseModel
 
 
 class RunTaskRequest(BaseModel):
     task: str
     agent_type: str = "react"
-    model: Optional[str] = None
-    temperature: Optional[float] = None
+    model: str | None = None
+    temperature: float | None = None
     max_steps: int = 10
-    expected_output: Optional[str] = None
-    task_id: Optional[str] = None
+    expected_output: str | None = None
+    task_id: str | None = None
 
 
 class EvalBatchRequest(BaseModel):
     dataset_path: str
     agent_type: str = "react"
-    model: Optional[str] = None
-    temperature: Optional[float] = None
+    model: str | None = None
+    temperature: float | None = None
     max_steps: int = 10
     sample: int = 0
     workers: int = 1

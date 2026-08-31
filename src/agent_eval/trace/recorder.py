@@ -8,11 +8,10 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any
 
 from agent_eval.llm import LLMCallback, LLMCallContext
 from agent_eval.tools import ToolCallback, ToolCallContext
-from agent_eval.trace.models import RunRecord, Span, SpanType, TokenUsage, RunStatus
+from agent_eval.trace.models import RunRecord, RunStatus, Span, SpanType, TokenUsage
 from agent_eval.trace.storage import JSONLStorage
 
 logger = logging.getLogger("agent_eval.trace.recorder")

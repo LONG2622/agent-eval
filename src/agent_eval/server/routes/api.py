@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import JSONResponse
@@ -12,11 +12,10 @@ from fastapi.responses import JSONResponse
 from agent_eval import __version__
 from agent_eval.config import load_config
 from agent_eval.evaluation import ABTestRunner, LLMJudgeEvaluator
-from agent_eval.task import TaskDataset, TaskItem, TaskRunner
-from agent_eval.trace import AnnotationRecord, RunStatus, SpanType
-
 from agent_eval.server.models import AnnotationRequest, EvalBatchRequest, RunTaskRequest
 from agent_eval.server.state import _run_to_dict, _span_to_dict, _storage, get_engine
+from agent_eval.task import TaskDataset, TaskItem, TaskRunner
+from agent_eval.trace import AnnotationRecord, RunStatus, SpanType
 
 router = APIRouter()
 
@@ -79,8 +78,8 @@ def list_models():
 @router.get("/api/runs")
 def list_runs(
     limit: int = Query(50, ge=1, le=500),
-    task_id: Optional[str] = None,
-    status: Optional[str] = None,
+    task_id: str | None = None,
+    status: str | None = None,
 ):
     runs = _storage.list_runs(task_id=task_id)
     if status:
@@ -151,8 +150,8 @@ def evaluate_run(run_id: str):
     engine = get_engine()
     try:
         results = engine.evaluate_run(run_id)
-    except KeyError:
-        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"Run {run_id} not found") from exc
     return {
         "run_id": run_id,
         "results_count": len(results),
@@ -203,7 +202,7 @@ def eval_batch(req: EvalBatchRequest):
 
 
 @router.post("/api/compare")
-def compare(req: EvalBatchRequest, model_b: Optional[str] = None, agent_b: str = "react"):
+def compare(req: EvalBatchRequest, model_b: str | None = None, agent_b: str = "react"):
     dataset_path = Path(req.dataset_path)
     if not dataset_path.exists():
         raise HTTPException(status_code=404, detail=f"Dataset not found: {dataset_path}")
@@ -231,7 +230,7 @@ def compare(req: EvalBatchRequest, model_b: Optional[str] = None, agent_b: str =
 
 
 @router.post("/api/judge/{run_id}")
-def judge_run(run_id: str, judge_model: Optional[str] = None):
+def judge_run(run_id: str, judge_model: str | None = None):
     run = _storage.load_run(run_id)
     if run is None:
         raise HTTPException(status_code=404, detail=f"Run {run_id} not found")

@@ -4,7 +4,7 @@
 
 一个开源的 Agent 评估框架：运行 Agent → 记录完整执行轨迹 → 从**任务成功率、工具调用、回答质量、延迟、Token Cost** 5 大维度系统评估。
 
-支持 **LLM-as-Judge 语义评分**、**A/B 对比测试**、**SQLite 持久化**、**HTML 可视化报告**、**Docker 一键部署**。
+支持 **LLM-as-Judge 语义评分**、**A/B 对比测试**、**Token 效率分析**、**回归测试基线**、**SQLite 持久化**、**HTML 可视化报告**、**CI/CD 流水线**、**Docker 一键部署**。
 
 ---
 
@@ -23,9 +23,11 @@
 
 | 模块 | 能力 |
 |------|------|
-| **📊 Evaluation Engine** | 5 大维度 × 20+ 细粒度指标、规则 + 关键词 + 启发式评估、批量聚合统计 |
+| **📊 Evaluation Engine** | 5 大维度 × 20+ 细粒度指标、规则 + 关键词 + 启发式评估、批量聚合统计、**阈值全部 YAML 配置化** |
 | **⚖️ LLM-as-Judge** | 5 维度语义评分（正确性 / 相关性 / 完整性 / 无害性 / 可读性）、Judge 失败自动降级到关键词评估 |
 | **🔬 A/B Testing** | 双 Agent 同数据集对比、配对 t-test 统计显著性检验、差异分析报告 |
+| **📉 Token 效率分析** | 冗余 Prompt 检测、上下文窗口占用率、chars/token 效率、系统提示膨胀比、自动诊断 flag（high_redundancy / context_near_limit / low_efficiency / empty_completion） |
+| **🏷️ 回归测试基线** | 保存批量评估为 baseline、后续运行自动 diff、维度级 regression / improvement 检测、verdict 告警 |
 | **📈 Batch Execution** | 并发执行（`--workers N`）、失败重试（指数退避）、断点续跑（checkpoint）、速率限制 |
 | **🔴 Error Classifier** | 11 类错误自动分类（Timeout / RateLimit / Auth / Network / Internal / MaxSteps / Tool / ...）、错误汇总统计 |
 
@@ -52,7 +54,7 @@
 | **🔴 错误分析** | 11 类错误分类统计、错误详情表格、错误类型可视化图表 |
 | **📊 标注对比** | 人工标注 vs 自动评估分数对比、相关性分析、散点图 / 雷达图 / 差异分布、Top 差异案例 |
 
-### CLI（12 条命令）
+### CLI（16 条命令）
 
 ```
 agent run                  运行单个任务
@@ -67,16 +69,22 @@ agent judge                对已有运行执行 LLM-as-Judge
 agent serve                启动 FastAPI Web 服务（Dashboard / Chat / Trace / Annotate）
 agent errors               错误分类与统计
 agent compare-annotations  标注 vs 自动评估对比报告
+agent token-analysis       Token 效率分析（冗余 / 上下文占用 / 诊断 flag）
+agent baseline-save        保存当前评估批次为回归基线
+agent baseline-compare     当前运行 vs 基线对比（回归检测）
+agent baseline-list        列出所有已保存基线
 ```
 
 ### 工程化
 
 | 模块 | 能力 |
 |------|------|
-| **🧪 单元测试** | 150 个测试用例，覆盖 8 大核心模块（trace models / storage / tools / evaluation / engine / error classifier / comparison / config），0 warnings |
+| **🧪 单元测试** | 361 个测试用例、覆盖率 84.6%（80% 门槛强制）、覆盖 20 个模块（trace / storage / tools / agent / runner / evaluation / judge / baseline / server / cli / reports / config） |
+| **🔄 CI/CD** | GitHub Actions：ruff lint → 3 版本 Python 矩阵测试（3.10/3.11/3.12）→ Docker 构建，覆盖率门槛 80% |
+| **🧹 代码规范** | ruff（E/F/W/I/B/UP 规则集）0 告警、类型注解、异常窄化（0 处裸 `except Exception`） |
 | **🐳 Docker 部署** | 多阶段构建、非 root 用户、数据卷持久化、健康检查、日志轮转 |
-| **📝 结构化日志** | JSON 格式日志输出、文件日志、可配置级别 |
-| **🔧 配置系统** | YAML + `.env` 环境变量替换、多模型 Profile、热重载 |
+| **📝 结构化日志** | 根/子 logger 分层（`--verbose` / `--json-logs` / `--log-file` 全局生效）、JSON 格式输出、文件日志 |
+| **🔧 配置系统** | YAML + `.env` 环境变量替换、多模型 Profile、评估阈值配置化、热重载 |
 
 ---
 
@@ -227,6 +235,43 @@ agent compare-annotations --save
 - 🏷️ **标签分组**：按人工标签分组的差异分析
 - ⚠️ **Top 差异案例**：列出人工与自动评估分数差异最大的运行
 
+### 12. Token 效率分析
+
+```bash
+# 批量分析所有运行：冗余 Prompt、上下文占用、chars/token 效率
+agent token-analysis
+
+# 只分析单个运行
+agent token-analysis --run-id <run-id>
+```
+
+输出包含：
+- 📋 每个 run 的 Prompt/Completion Token、冗余比例、上下文占用率、系统提示膨胀比
+- 🚩 自动诊断 flag：`high_redundancy`（冗余 >25%）/ `context_near_limit`（占用 >80%）/ `low_efficiency` / `empty_completion`
+- 🏆 Top 冗余运行排行 + 优化建议（如"考虑对话历史摘要压缩"）
+
+### 13. 回归测试基线
+
+```bash
+# 1. 把当前评估批次保存为基线
+agent baseline-save --name "v1.0 release"
+
+# 2. （改进 Agent / 换模型 / 调 Prompt 之后）重新批量评估
+agent eval examples/sample_tasks.jsonl -n 10
+
+# 3. 与基线对比，自动检测性能退化
+agent baseline-compare --baseline-id baseline_1787305000
+
+# 4. 查看所有基线
+agent baseline-list
+```
+
+对比输出：
+- 📊 **Overall Delta**：当前 vs 基线的成功率差异
+- 🔴 **Regressions**：退化的维度列表（如 `answer_quality 下降 12%`）
+- 🟢 **Improvements**：提升的维度列表
+- ⚖️ **Verdict**：一句话结论（"No regression" / "成功后退化了 8%"）
+
 ---
 
 ## 🐳 Docker 部署
@@ -294,75 +339,99 @@ docker exec -it agent-eval agent errors
 
 ```
 Agent/
+├── .github/workflows/
+│   └── ci.yml                    # GitHub Actions（ruff + 3 版本测试矩阵 + Docker build）
 ├── configs/
-│   └── default.yaml               # 主配置（模型 / 定价 / Agent / Judge）
+│   └── default.yaml              # 主配置（模型 / 定价 / Agent / Judge / 评估阈值）
 ├── examples/
-│   └── sample_tasks.jsonl         # 示例任务
+│   └── sample_tasks.jsonl        # 示例任务（50 条，7 类别，3 档难度）
 ├── src/agent_eval/
-│   ├── cli.py                     # CLI 入口（12 条命令）
-│   ├── config.py                  # Pydantic 配置模型 + 环境变量替换
-│   ├── logger.py                  # 结构化日志（JSON / 控制台）
+│   ├── cli.py                    # CLI 入口（16 条命令）
+│   ├── config.py                 # Pydantic 配置模型 + 环境变量替换 + 评估阈值配置
+│   ├── logger.py                 # 结构化日志（根/子 logger 分层，JSON / 控制台）
 │   │
-│   ├── llm/                       # LLM 网关层
-│   │   ├── gateway.py             # LLMGateway（重试 / 计费 / 归一化 / Callback）
-│   │   ├── messages.py            # Message 模型 + 序列化
-│   │   ├── tokenizer.py           # Token 计数 + 费用计算
+│   ├── llm/                      # LLM 网关层
+│   │   ├── gateway.py            # LLMGateway（计费 / 归一化 / Callback）
+│   │   ├── messages.py           # Message 模型 + 序列化
+│   │   ├── tokenizer.py          # Token 计数 + 费用计算
 │   │   └── providers/
-│   │       ├── base.py            # BaseProvider 抽象 + Callback
-│   │       └── openai_provider.py # OpenAI 兼容实现（多模型 Profile）
+│   │       ├── base.py           # LLMProvider 抽象 + Callback
+│   │       └── openai_provider.py # OpenAI 兼容实现（重试 / 多模型 Profile）
 │   │
-│   ├── tools/                     # 工具注册层
-│   │   ├── registry.py            # ToolRegistry + @tool 装饰器 + Callback
-│   │   └── builtin.py             # 4 个内置工具
+│   ├── tools/                    # 工具注册层
+│   │   ├── registry.py           # ToolRegistry + @tool 装饰器 + Callback
+│   │   └── builtin.py            # 4 个内置工具
 │   │
-│   ├── agent/                     # Agent 运行时
-│   │   ├── base.py                # BaseAgent + AgentRegistry
-│   │   └── react_agent.py         # ReAct Agent（Function Calling + Scratchpad）
+│   ├── agent/                    # Agent 运行时
+│   │   ├── base.py               # BaseAgent + AgentRegistry
+│   │   └── react_agent.py        # ReAct Agent（Function Calling + Scratchpad 双模式）
 │   │
-│   ├── trace/                     # 轨迹记录层
-│   │   ├── models.py              # RunRecord / Span / AnnotationRecord
-│   │   ├── recorder.py            # TraceRecorder（三合一 Callback）
-│   │   ├── storage.py             # JSONLStorage（线程安全）
-│   │   └── sql_storage.py         # SQLiteStorage（4 表 + 聚合 + 迁移）
+│   ├── trace/                    # 轨迹记录层
+│   │   ├── models.py             # RunRecord / Span / AnnotationRecord
+│   │   ├── recorder.py           # TraceRecorder（三合一 Callback）
+│   │   ├── storage.py            # JSONLStorage（线程安全）
+│   │   └── sql_storage.py        # SQLiteStorage（4 表 + 聚合 + 迁移）
 │   │
-│   ├── task/                      # 任务执行层
-│   │   └── runner.py              # TaskRunner（并发 / 重试 / 断点续跑 / 速率限制）
+│   ├── task/                     # 任务执行层
+│   │   └── runner.py             # TaskRunner（并发 / 重试 / 断点续跑 / 速率限制）
 │   │
-│   ├── evaluation/                # 评估引擎
-│   │   ├── base.py                # BaseEvaluator + 数据模型
-│   │   ├── builtin.py             # 5 大内置评估器
-│   │   ├── engine.py              # EvaluationEngine + BatchSummary
-│   │   ├── llm_judge.py           # LLM-as-Judge 评估器
-│   │   ├── ab_test.py             # A/B 测试引擎
-│   │   └── error_classifier.py    # 11 类错误分类器
+│   ├── evaluation/               # 评估引擎
+│   │   ├── base.py               # BaseEvaluator + 数据模型
+│   │   ├── builtin.py            # 5 大内置评估器（阈值从 YAML 读取）
+│   │   ├── engine.py             # EvaluationEngine + BatchSummary
+│   │   ├── llm_judge.py          # LLM-as-Judge 评估器
+│   │   ├── ab_test.py            # A/B 测试引擎
+│   │   ├── baseline.py           # 回归测试基线（save / compare / list）
+│   │   ├── token_efficiency.py   # Token 效率分析器（冗余 / 上下文 / 诊断 flag）
+│   │   └── error_classifier.py   # 11 类错误分类器
 │   │
-│   ├── report/                    # 报告层
-│   │   ├── terminal_report.py     # Rich 终端报告
-│   │   ├── html_report.py         # Chart.js HTML 报告
-│   │   └── comparison_report.py   # 标注 vs 自动评估对比报告
+│   ├── report/                   # 报告层
+│   │   ├── terminal_report.py    # Rich 终端报告
+│   │   ├── html_report.py        # Chart.js HTML 报告
+│   │   └── comparison_report.py  # 标注 vs 自动评估对比报告
 │   │
-│   └── server/
-│       └── app.py                 # FastAPI 服务 + 6 个 Web 页面 + 26 个 API 端点
+│   └── server/                   # Web 服务层（原 app.py 拆分）
+│       ├── app.py                # FastAPI 应用组装（CORS + 路由挂载）
+│       ├── models.py             # 请求 Pydantic 模型
+│       ├── state.py              # 共享状态（storage / engine）
+│       ├── routes/
+│       │   ├── api.py            # 18 个 REST API 端点
+│       │   ├── pages.py          # 7 个 HTML 页面端点
+│       │   └── websocket.py      # WebSocket 端点
+│       └── templates/            # 6 个 HTML 模板（dashboard / chat / trace / annotate / errors / compare）
 │
-├── tests/                         # 单元测试（150 tests, 0 warnings）
-│   ├── conftest.py                # 共享 fixtures
-│   ├── test_trace_models.py       # Pydantic 数据模型测试
-│   ├── test_storage.py            # JSONLStorage CRUD 测试
-│   ├── test_tools.py              # ToolRegistry + @tool 测试
-│   ├── test_evaluation.py         # 5 个评估器测试
-│   ├── test_engine.py             # EvaluationEngine 测试
-│   ├── test_error_classifier.py   # 错误分类器测试
-│   ├── test_comparison.py         # 对比报告测试
-│   └── test_config.py             # 配置加载测试
+├── tests/                        # 单元测试（361 tests，覆盖率 84.6%）
+│   ├── conftest.py               # 共享 fixtures
+│   ├── test_trace_models.py      # Pydantic 数据模型
+│   ├── test_storage.py           # JSONLStorage CRUD
+│   ├── test_sql_storage.py       # SQLiteStorage + 迁移
+│   ├── test_tools.py             # ToolRegistry + @tool
+│   ├── test_react_agent.py       # ReAct Agent（双模式 mock 测试）
+│   ├── test_recorder.py          # TraceRecorder 回调
+│   ├── test_task_runner.py       # TaskRunner（并发 / 重试 / checkpoint）
+│   ├── test_evaluation.py        # 5 个内置评估器
+│   ├── test_engine.py            # EvaluationEngine
+│   ├── test_llm_judge.py         # LLM-as-Judge（3 层解析降级路径）
+│   ├── test_baseline.py          # 回归基线 save/compare
+│   ├── test_token_efficiency.py  # Token 效率分析
+│   ├── test_ab_test.py           # A/B 测试统计
+│   ├── test_error_classifier.py  # 错误分类器
+│   ├── test_comparison.py        # 对比报告
+│   ├── test_reports.py           # 终端 + HTML 报告渲染
+│   ├── test_llm_layer.py         # tokenizer / messages / gateway / provider
+│   ├── test_server.py            # FastAPI 端点 + 页面 + WebSocket
+│   ├── test_cli.py               # CLI 命令
+│   └── test_config.py            # 配置加载
 │
 ├── outputs/                       # 运行时输出（gitignore）
 │   ├── traces/                    # 每条 Span 一行 JSONL
 │   ├── runs/                      # Run 元信息
 │   ├── evaluations/               # 评估结果 + 批量汇总
-│   └── annotations/               # 人工标注
+│   ├── annotations/               # 人工标注
+│   └── baselines/                 # 回归测试基线
 │
 ├── smoke_test.py                  # 离线冒烟测试（无需 API Key）
-├── pyproject.toml                 # 项目打包配置
+├── pyproject.toml                 # 打包 + pytest/coverage/ruff/black 配置
 ├── requirements.txt               # 依赖清单
 ├── Dockerfile                     # Docker 多阶段构建
 ├── docker-compose.yml            # Docker Compose 编排
@@ -460,21 +529,45 @@ class MyEvaluator(BaseEvaluator):
 ### 单元测试
 
 ```bash
+# 运行全量测试
 python -m pytest tests/ -v
+
+# 带覆盖率统计（需 pytest-cov，80% 门槛）
+python -m pytest tests/ --cov=agent_eval --cov-report=term-missing --cov-fail-under=80
 ```
 
-覆盖 8 大核心模块，150 个测试用例：
+**361 个测试，覆盖率 84.6%**，覆盖 20 个模块：
 
 | 测试文件 | 覆盖模块 | 测试数 |
 |----------|----------|--------|
 | test_trace_models.py | Pydantic 数据模型 | 16 |
 | test_storage.py | JSONLStorage CRUD | 18 |
+| test_sql_storage.py | SQLiteStorage + JSONL 迁移 | 19 |
 | test_tools.py | @tool 装饰器 / ToolRegistry / 内置工具 | 30 |
+| test_react_agent.py | ReAct Agent（Function Calling + Scratchpad 双模式） | 7 |
+| test_recorder.py | TraceRecorder 回调记录 | 10 |
+| test_task_runner.py | TaskRunner（并发 / 重试 / checkpoint 续跑） | 7 |
 | test_evaluation.py | 5 个内置评估器 | 22 |
 | test_engine.py | EvaluationEngine 批量评估 | 15 |
+| test_llm_judge.py | LLM-as-Judge（3 层 JSON 解析降级路径） | 32 |
+| test_baseline.py | 回归基线 save / compare / list | 14 |
+| test_token_efficiency.py | Token 效率分析（冗余 / 上下文 / flag） | 14 |
+| test_ab_test.py | A/B 测试统计（配对 t-test） | 15 |
 | test_error_classifier.py | 错误分类器 + 汇总 | 19 |
 | test_comparison.py | 标注对比报告 | 18 |
+| test_reports.py | 终端 + HTML 报告渲染 | 16 |
+| test_llm_layer.py | tokenizer / messages / gateway / provider | 19 |
+| test_server.py | FastAPI 端点 + 页面 + WebSocket | 49 |
+| test_cli.py | CLI 命令 | 9 |
 | test_config.py | 配置加载 / 环境变量替换 | 12 |
+
+### CI/CD
+
+推送到 GitHub 后自动执行（[.github/workflows/ci.yml](.github/workflows/ci.yml)）：
+
+1. **Lint** — ruff 全量检查（E/F/W/I/B/UP 规则集）
+2. **Test** — Python 3.10 / 3.11 / 3.12 三版本矩阵 + 覆盖率门槛 80%
+3. **Docker** — 镜像构建验证（GHA 缓存加速，不推送）
 
 ### 离线冒烟测试
 
@@ -508,6 +601,22 @@ evaluation:
     model: tju-llm                # 裁判模型
     temperature: 0.1
 
+  # 评估器阈值全部可配置（无需改代码）
+  quality:
+    keyword_match_threshold: 0.6
+    completeness_pass_threshold: 0.5
+    relevance_pass_threshold: 0.6
+  tool_usage:
+    success_rate_threshold: 0.8
+    success_weight: 0.6
+    redundancy_weight: 0.4
+  latency:
+    total_budget_ms: 60000
+    avg_step_budget_ms: 10000
+  token_cost:
+    max_total_tokens: 128000
+    max_cost_usd: 1.0
+
 pricing:
   tju-llm:
     prompt: 0.0                   # 按实际定价填写
@@ -523,8 +632,9 @@ pricing:
 | **Phase 1 — MVP** | ✅ 完成 | Agent Runtime + Trace Recorder + 5 维评估 + CLI + Terminal Report |
 | **Phase 2 — 评估强化** | ✅ 完成 | LLM-as-Judge + A/B 对比 + SQLite + HTML 报告 + 并发批量 |
 | **Phase 3 — Web 化** | ✅ 完成 | FastAPI REST API + Web Dashboard + Trace 回放 + 人工标注 + 交互式聊天 |
-| **Phase 4 — 工程化** | ✅ 完成 | 错误分类器 + 标注对比报告 + Docker 部署 + 单元测试体系 (150 tests) + Bug 修复 |
-| **Phase 5 — 功能增强** | 🔜 计划中 | CI/CD + 测试覆盖率 + Chat 流式响应 + SQL 存储完善 + Token 效率分析 |
+| **Phase 4 — 工程化** | ✅ 完成 | 错误分类器 + 标注对比报告 + Docker 部署 + 单元测试体系 + Bug 修复 |
+| **Phase 5 — 质量与深度** | ✅ 完成 | app.py 模块化拆分 + 评估阈值配置化 + 异常窄化 + 日志分层修复 + CI/CD + 覆盖率 84.6% (361 tests) + Token 效率分析器 + 回归测试基线 |
+| **Phase 6 — 体验与能力** | 🔜 计划中 | Chat 流式响应（SSE）+ WebSocket 实时推送 + 数据集管理页 + Dashboard 筛选搜索 + Plan-and-Execute Agent + 多模态支持 |
 
 ---
 

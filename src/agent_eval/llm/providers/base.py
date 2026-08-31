@@ -70,14 +70,14 @@ class LLMCallContext:
     extra: dict[str, Any] = field(default_factory=dict)
 
 
-class LLMCallback(ABC):
+class LLMCallback(ABC):  # noqa: B024 - marker base with optional hooks
     """Hook for tracing/observing LLM calls."""
 
-    def on_call_start(self, ctx: LLMCallContext) -> None:
+    def on_call_start(self, ctx: LLMCallContext) -> None:  # noqa: B027
         pass
 
-    def on_call_end(self, ctx: LLMCallContext) -> None:
+    def on_call_end(self, ctx: LLMCallContext) -> None:  # noqa: B027
         pass
 
-    def on_call_error(self, ctx: LLMCallContext) -> None:
+    def on_call_error(self, ctx: LLMCallContext) -> None:  # noqa: B027
         pass

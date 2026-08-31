@@ -26,6 +26,7 @@ dependencies = [
 dev = [
     "pytest>=7.0",
     "pytest-asyncio>=0.21",
+    "pytest-cov>=4.1",
     "black>=23.0",
     "ruff>=0.1.0",
 ]
@@ -36,9 +37,35 @@ agent = "agent_eval.cli:app"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.coverage.run]
+source = ["agent_eval"]
+omit = [
+    "*/server/templates/*",
+    "*/smoke_test.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+    "@abstractmethod",
+]
+
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = [
+    "E501",  # line too long - handled by formatter
+    "B008",  # function call in argument defaults (typer/fastapi pattern)
+]
 
 [tool.black]
 line-length = 100

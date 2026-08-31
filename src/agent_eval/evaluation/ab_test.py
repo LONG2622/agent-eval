@@ -18,11 +18,10 @@ and a paired t-test for statistical significance.
 from __future__ import annotations
 
 import statistics
-import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from agent_eval.evaluation.engine import BatchSummary, EvaluationEngine
+from agent_eval.evaluation.engine import BatchSummary
 from agent_eval.task.runner import RunOutcome, TaskDataset, TaskRunner
 
 
@@ -239,7 +238,7 @@ class ABTestRunner:
         def _paired_ttest(a: list[float], b: list[float]) -> dict[str, Any]:
             """Simple paired t-test implementation."""
             n = len(a)
-            diffs = [ai - bi for ai, bi in zip(a, b)]
+            diffs = [ai - bi for ai, bi in zip(a, b, strict=False)]
             mean_diff = statistics.mean(diffs)
             if n <= 1:
                 return {"mean_diff": mean_diff, "significant": False}
@@ -268,7 +267,7 @@ class ABTestRunner:
         outcomes_b: list[RunOutcome],
     ) -> list[dict[str, Any]]:
         details: list[dict[str, Any]] = []
-        for oa, ob in zip(outcomes_a, outcomes_b):
+        for oa, ob in zip(outcomes_a, outcomes_b, strict=False):
             details.append({
                 "task_id": oa.task.task_id,
                 "input_preview": oa.task.input[:80],

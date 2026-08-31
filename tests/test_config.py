@@ -2,17 +2,11 @@
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
-
-import pytest
-
 from agent_eval.config import (
     LLMModelProfile,
     _find_profile_for_model,
     _substitute_env_vars,
     _walk_and_substitute,
-    get_model_profile,
     get_pricing,
     list_model_profiles,
     load_config,
@@ -146,7 +140,7 @@ class TestGetPricing:
         reset_config()
         monkeypatch.setenv("PRICING_GPT_4O_MINI_PROMPT", "0.00015")
         monkeypatch.setenv("PRICING_GPT_4O_MINI_COMPLETION", "0.0006")
-        cfg = load_config(force_reload=True)
+        load_config(force_reload=True)
         pricing = get_pricing("gpt-4o-mini")
         assert pricing.prompt == 0.00015
         assert pricing.completion == 0.0006

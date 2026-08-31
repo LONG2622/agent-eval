@@ -4,15 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from agent_eval.evaluation.builtin import (
-    AnswerQualityEvaluator,
-    LatencyEvaluator,
-    SuccessRateEvaluator,
-    TokenCostEvaluator,
-    ToolUsageEvaluator,
-)
 from agent_eval.evaluation.engine import EvaluationEngine
-from agent_eval.trace.models import RunRecord, RunStatus, Span, SpanType
+from agent_eval.trace.models import RunRecord, RunStatus, Span
 
 
 @pytest.fixture
@@ -87,7 +80,7 @@ class TestEvaluationEngine:
         assert "answer_quality" in summary.dimension_summaries
 
         # Each dimension summary should have required fields
-        for dim, ds in summary.dimension_summaries.items():
+        for _dim, ds in summary.dimension_summaries.items():
             assert ds.count > 0
             assert 0 <= ds.pass_rate <= 1.0
             assert ds.mean_score >= 0
@@ -182,7 +175,7 @@ class TestDimensionSummary:
             )
         ])
         per_run, summary = engine.evaluate_runs(["dim_test"])
-        for dim, ds in summary.dimension_summaries.items():
+        for _dim, ds in summary.dimension_summaries.items():
             d = ds.to_dict()
             assert "dimension" in d
             assert "count" in d

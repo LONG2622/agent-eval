@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
+from rich import box
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 from rich.tree import Tree
-from rich import box
 
-from agent_eval.evaluation import BatchSummary, EvaluationEngine, EvaluationResult
+from agent_eval.evaluation import BatchSummary, EvaluationResult
 from agent_eval.trace import RunRecord, Span, SpanType
 
 console = Console()
@@ -208,7 +208,7 @@ def print_run_evaluation(
 def _short_details(details: Any) -> str:
     if details is None:
         return ""
-    if isinstance(details, (dict, list)):
+    if isinstance(details, dict | list):
         import json
 
         s = json.dumps(details, ensure_ascii=False)

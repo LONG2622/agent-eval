@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from agent_eval.evaluation.engine import EvaluationEngine
-from agent_eval.trace import JSONLStorage, RunRecord
+from agent_eval.trace import JSONLStorage
 
 
 @dataclass
@@ -102,7 +102,7 @@ def _pearson_correlation(x: list[float], y: list[float]) -> float | None:
         return None
     mean_x = statistics.mean(x)
     mean_y = statistics.mean(y)
-    cov = sum((xi - mean_x) * (yi - mean_y) for xi, yi in zip(x, y)) / n
+    cov = sum((xi - mean_x) * (yi - mean_y) for xi, yi in zip(x, y, strict=False)) / n
     std_x = (sum((xi - mean_x) ** 2 for xi in x) / n) ** 0.5
     std_y = (sum((yi - mean_y) ** 2 for yi in y) / n) ** 0.5
     if std_x == 0 or std_y == 0:
@@ -233,7 +233,7 @@ def run_comparison(storage: JSONLStorage | None = None) -> tuple[ComparisonSumma
             summary.correlation = _pearson_correlation(paired_human, paired_auto)
 
             # MAE and RMSE
-            abs_errors = [abs(h - a) for h, a in zip(paired_human, paired_auto)]
+            abs_errors = [abs(h - a) for h, a in zip(paired_human, paired_auto, strict=False)]
             summary.mae = statistics.mean(abs_errors)
             summary.rmse = (statistics.mean([e ** 2 for e in abs_errors])) ** 0.5
 
@@ -269,7 +269,7 @@ def run_comparison(storage: JSONLStorage | None = None) -> tuple[ComparisonSumma
                         if item.discrepancy is not None:
                             cat_breakdown[label]["discrepancies"].append(item.discrepancy)
 
-            for label, data in cat_breakdown.items():
+            for _label, data in cat_breakdown.items():
                 data["human_mean"] = round(statistics.mean(data["human_scores"]), 4) if data["human_scores"] else 0
                 data["auto_mean"] = round(statistics.mean(data["auto_scores"]), 4) if data["auto_scores"] else 0
                 data["mean_discrepancy"] = round(statistics.mean(data["discrepancies"]), 4) if data["discrepancies"] else 0

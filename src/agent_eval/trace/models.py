@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import enum
-import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -38,10 +37,10 @@ class TokenUsage(BaseModel):
     total_tokens: int = 0
 
     @classmethod
-    def from_pair(cls, prompt: int, completion: int) -> "TokenUsage":
+    def from_pair(cls, prompt: int, completion: int) -> TokenUsage:
         return cls(prompt_tokens=prompt, completion_tokens=completion, total_tokens=prompt + completion)
 
-    def add(self, other: "TokenUsage") -> "TokenUsage":
+    def add(self, other: TokenUsage) -> TokenUsage:
         return TokenUsage(
             prompt_tokens=self.prompt_tokens + other.prompt_tokens,
             completion_tokens=self.completion_tokens + other.completion_tokens,

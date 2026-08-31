@@ -12,18 +12,19 @@ from __future__ import annotations
 
 import json
 import threading
-from agent_eval.logger import setup_logger
 import time
 import uuid
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Iterable, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
-from agent_eval.agent import AgentRunConfig, BaseAgent, get_agent_registry
+from agent_eval.agent import AgentRunConfig, get_agent_registry
 from agent_eval.config import load_config
 from agent_eval.llm import LLMGateway
+from agent_eval.logger import setup_logger
 from agent_eval.tools import ToolRegistry, register_builtin_tools
 from agent_eval.trace import JSONLStorage, RunRecord, TraceRecorder
 
@@ -49,7 +50,7 @@ class TaskItem(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "TaskItem":
+    def from_dict(cls, data: dict[str, Any]) -> TaskItem:
         # Support alternative common keys (question/answer/prompt)
         input_text = (
             data.get("input")
@@ -86,10 +87,10 @@ class TaskDataset:
     # ---- Loaders ----
 
     @classmethod
-    def from_jsonl(cls, path: str | Path, name: str | None = None) -> "TaskDataset":
+    def from_jsonl(cls, path: str | Path, name: str | None = None) -> TaskDataset:
         dataset_name = name or Path(path).stem
         items: list[TaskItem] = []
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             for i, line in enumerate(f, 1):
                 line = line.strip()
                 if not line:
@@ -102,13 +103,13 @@ class TaskDataset:
         return cls(items=items, name=dataset_name)
 
     @classmethod
-    def from_list(cls, items: Iterable[dict[str, Any]], name: str = "in_memory") -> "TaskDataset":
+    def from_list(cls, items: Iterable[dict[str, Any]], name: str = "in_memory") -> TaskDataset:
         task_items = [TaskItem.from_dict(d) for d in items]
         return cls(items=task_items, name=name)
 
     # ---- Utility ----
 
-    def sample(self, n: int, seed: int | None = 42) -> "TaskDataset":
+    def sample(self, n: int, seed: int | None = 42) -> TaskDataset:
         import random
 
         rng = random.Random(seed)
@@ -168,7 +169,7 @@ class TaskRunner:
         tool_registry: ToolRegistry | None = None,
         trace_recorder: TraceRecorder | None = None,
         storage: JSONLStorage | None = None,
-        evaluation_engine: "EvaluationEngine" | None = None,
+        evaluation_engine: EvaluationEngine | None = None,
     ) -> None:
         from agent_eval.evaluation import EvaluationEngine  # noqa: F811
 
@@ -242,7 +243,7 @@ class TaskRunner:
         retry_delay: float = 2.0,
         resume_from: str | Path | None = None,
         progress_callback: Callable[[int, int, RunOutcome | None], None] | None = None,
-    ) -> tuple[list[RunOutcome], "BatchSummary | None"]:
+    ) -> tuple[list[RunOutcome], BatchSummary | None]:
         """Run a batch of tasks with concurrency, retry, and checkpoint support.
 
         Args:
@@ -257,7 +258,6 @@ class TaskRunner:
             (list of RunOutcome, BatchSummary or None)
         """
         outcomes: list[RunOutcome] = []
-        total = len(dataset)
         completed_ids: set[str] = set()
 
         # Resume from checkpoint
@@ -439,7 +439,7 @@ class TaskRunner:
         completed: set[str] = set()
         if not path.exists():
             return completed
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line:
@@ -448,7 +448,7 @@ class TaskRunner:
                     data = json.loads(line)
                     if data.get("status") == "success":
                         completed.add(data["task_id"])
-                except (OSError, IOError, TypeError, ValueError):
+                except (OSError, TypeError, ValueError):
                     pass
         return completed
 

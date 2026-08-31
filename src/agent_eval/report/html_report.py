@@ -22,7 +22,6 @@ from agent_eval.evaluation.ab_test import ABTestSummary
 from agent_eval.evaluation.engine import BatchSummary, EvaluationEngine
 from agent_eval.trace import JSONLStorage, RunRecord, Span
 
-
 # ---------------------------------------------------------------------------
 # HTML template fragments
 # ---------------------------------------------------------------------------
@@ -134,7 +133,7 @@ class HTMLReportGenerator:
         body = self._build_batch_body(summary)
         return self._write_report(
             f"batch_{label}_{int(time.time())}",
-            title=f"Batch Evaluation Report",
+            title="Batch Evaluation Report",
             subtitle=f"Tasks: {summary.total_runs} · Evaluators: {', '.join(summary.metadata.get('evaluators', []))}",
             body=body,
         )

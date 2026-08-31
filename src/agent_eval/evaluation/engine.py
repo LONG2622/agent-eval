@@ -4,15 +4,16 @@ from __future__ import annotations
 
 import json
 import statistics
-from agent_eval.logger import setup_logger
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from agent_eval.config import load_config
 from agent_eval.evaluation.base import BaseEvaluator, EvalDimension, EvaluationResult, SubMetric
 from agent_eval.evaluation.builtin import get_builtin_evaluator_instances
-from agent_eval.trace import JSONLStorage, RunRecord, RunStatus, Span
+from agent_eval.logger import setup_logger
+from agent_eval.trace import JSONLStorage, RunRecord, RunStatus
 
 logger = setup_logger("agent_eval.evaluation.engine")
 
@@ -207,7 +208,7 @@ class EvaluationEngine:
         # Group by dimension (use overall per-dim per-run score)
         per_dimension_scores: dict[str, list[float]] = {}
         per_dimension_passed: dict[str, list[bool]] = {}
-        for rid, rlist in per_run_results.items():
+        for _rid, rlist in per_run_results.items():
             per_run_dim: dict[str, EvaluationResult] = {}
             for r in rlist:
                 # Prefer the overall (sub_metric is None) result for the dim
@@ -309,7 +310,7 @@ class EvaluationEngine:
         if not path.exists():
             return None
         results: list[EvaluationResult] = []
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if line:

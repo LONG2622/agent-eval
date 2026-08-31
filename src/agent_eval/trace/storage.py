@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import json
-from agent_eval.logger import setup_logger
 import threading
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
 
 from agent_eval.config import load_config
+from agent_eval.logger import setup_logger
 from agent_eval.trace.models import AnnotationRecord, RunRecord, Span
 
 logger = setup_logger("agent_eval.trace.storage")
@@ -63,7 +63,7 @@ class JSONLStorage:
         if not path.exists():
             return []
         spans: list[Span] = []
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line:
@@ -84,7 +84,7 @@ class JSONLStorage:
         path = self._runs_file()
         if not path.exists():
             return
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line:
@@ -132,7 +132,7 @@ class JSONLStorage:
         if not path.exists():
             return
         self._annotations_index = []
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line:

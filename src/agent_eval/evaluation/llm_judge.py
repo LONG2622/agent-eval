@@ -18,9 +18,6 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any
-
-from agent_eval.logger import setup_logger
 
 from pydantic import BaseModel, Field
 
@@ -32,6 +29,7 @@ from agent_eval.evaluation.base import (
     SubMetric,
 )
 from agent_eval.llm import LLMGateway
+from agent_eval.logger import setup_logger
 from agent_eval.trace import RunRecord, Span
 
 logger = setup_logger("agent_eval.evaluation.llm_judge")

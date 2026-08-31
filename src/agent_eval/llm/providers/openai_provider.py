@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from agent_eval.logger import setup_logger
 import os
 import time
 from typing import Any
@@ -11,6 +10,7 @@ from agent_eval.config import get_model_profile, load_config
 from agent_eval.llm.messages import Message
 from agent_eval.llm.providers.base import LLMCallOptions, LLMProvider, LLMResponse
 from agent_eval.llm.tokenizer import calculate_cost, count_tokens_breakdown
+from agent_eval.logger import setup_logger
 
 logger = setup_logger("agent_eval.llm.openai")
 

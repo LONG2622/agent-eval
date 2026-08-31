@@ -10,8 +10,6 @@ import json
 import re
 from typing import Any
 
-from agent_eval.logger import setup_logger
-
 from agent_eval.agent.base import BaseAgent, register_agent
 from agent_eval.llm import (
     Message,
@@ -22,6 +20,7 @@ from agent_eval.llm import (
     tool_message,
     user_message,
 )
+from agent_eval.logger import setup_logger
 from agent_eval.trace import RunRecord, RunStatus
 
 logger = setup_logger("agent_eval.agent.react")
@@ -135,10 +134,17 @@ class ReActAgent(BaseAgent):
                     messages.append(hint)
 
             else:
+                # Exhausted max_steps without producing a final answer
                 if not final_answer:
-                    final_answer = self._extract_last_content(messages) or (
-                        "[Agent exceeded max steps without producing final answer]"
+                    truncated = self._extract_last_content(messages) or ""
+                    final_answer = f"[Agent exceeded max steps ({self.config.max_steps})]"
+                    run = self._finalize_run(
+                        run,
+                        output=truncated or final_answer,
+                        status=RunStatus.FAILED,
+                        error=f"Agent exceeded max steps ({self.config.max_steps}) without final answer",
                     )
+                    return (final_answer, run)
         except (RuntimeError, ValueError, ConnectionError, TimeoutError, OSError, KeyError, AttributeError) as e:
             logger.exception(f"Agent run failed: {e}")
             cleaned = self._clean_final_answer(final_answer) if final_answer else None

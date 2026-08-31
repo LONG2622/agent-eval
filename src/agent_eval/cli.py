@@ -15,26 +15,27 @@ Commands:
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
-from typing import Optional
 
 import typer
 from rich import print as rprint
 from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
 
 from agent_eval import __version__
 from agent_eval.config import load_config
 from agent_eval.evaluation import ABTestRunner, EvaluationEngine, LLMJudgeEvaluator
+from agent_eval.evaluation.token_efficiency import analyze_batch, analyze_run
 from agent_eval.logger import setup_logger
 from agent_eval.report import (
     HTMLReportGenerator,
     format_comparison_text,
     generate_comparison_report,
-    run_comparison,
     print_batch_summary,
     print_full_single_run_report,
     print_run_list,
+    run_comparison,
 )
 from agent_eval.task import TaskDataset, TaskItem, TaskRunner
 from agent_eval.trace import JSONLStorage, SQLiteStorage
@@ -58,7 +59,7 @@ def _version_callback(value: bool) -> None:
 
 @app.callback()
 def main(
-    version: Optional[bool] = typer.Option(
+    version: bool | None = typer.Option(
         None,
         "--version",
         "-V",
@@ -67,7 +68,7 @@ def main(
         is_eager=True,
     ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable DEBUG logging."),
-    log_file: Optional[Path] = typer.Option(None, "--log-file", help="Also log to a file (JSONL)."),
+    log_file: Path | None = typer.Option(None, "--log-file", help="Also log to a file (JSONL)."),
     json_logs: bool = typer.Option(False, "--json-logs", help="Emit JSON line logs on stdout."),
 ) -> None:
     setup_logger(
@@ -87,11 +88,11 @@ def main(
 def run_cmd(
     task: str = typer.Argument(..., help="The task description / user question."),
     agent_type: str = typer.Option("react", "--agent", "-a", help="Agent type (react, ...)."),
-    model: Optional[str] = typer.Option(None, "--model", "-m", help="Override LLM model name."),
-    temperature: Optional[float] = typer.Option(None, "--temperature", "-t", help="LLM temperature."),
+    model: str | None = typer.Option(None, "--model", "-m", help="Override LLM model name."),
+    temperature: float | None = typer.Option(None, "--temperature", "-t", help="LLM temperature."),
     max_steps: int = typer.Option(10, "--max-steps", "-s", help="Max reasoning steps."),
-    expected_output: Optional[str] = typer.Option(None, "--expected", "-e", help="Expected answer for evaluation."),
-    task_id: Optional[str] = typer.Option(None, "--task-id", help="User-defined task identifier."),
+    expected_output: str | None = typer.Option(None, "--expected", "-e", help="Expected answer for evaluation."),
+    task_id: str | None = typer.Option(None, "--task-id", help="User-defined task identifier."),
 ) -> None:
     logger.info(f"Run started: agent={agent_type}, model={model or 'default'}, max_steps={max_steps}")
     runner = TaskRunner()
@@ -125,22 +126,22 @@ def run_cmd(
 def eval_cmd(
     dataset: Path = typer.Argument(..., exists=True, dir_okay=False, help="Path to dataset JSONL."),
     agent_type: str = typer.Option("react", "--agent", "-a", help="Agent type."),
-    model: Optional[str] = typer.Option(None, "--model", "-m", help="Override LLM model."),
-    temperature: Optional[float] = typer.Option(None, "--temperature", "-t", help="LLM temperature."),
+    model: str | None = typer.Option(None, "--model", "-m", help="Override LLM model."),
+    temperature: float | None = typer.Option(None, "--temperature", "-t", help="LLM temperature."),
     max_steps: int = typer.Option(10, "--max-steps", "-s", help="Max steps per task."),
     sample: int = typer.Option(0, "--sample", "-n", help="Randomly sample N tasks (0 = all)."),
     seed: int = typer.Option(42, "--seed", help="Seed for --sample."),
     workers: int = typer.Option(1, "--workers", "-w", help="Concurrent workers (phase 2)."),
     retries: int = typer.Option(2, "--retries", help="Max retry attempts per task."),
     retry_delay: float = typer.Option(2.0, "--retry-delay", help="Base retry delay (seconds)."),
-    checkpoint: Optional[Path] = typer.Option(None, "--checkpoint", help="Checkpoint file for resume."),
+    checkpoint: Path | None = typer.Option(None, "--checkpoint", help="Checkpoint file for resume."),
     report_html: bool = typer.Option(False, "--report-html", help="Generate HTML report after evaluation."),
 ) -> None:
     try:
         tasks = TaskDataset.from_jsonl(dataset)
     except (RuntimeError, ValueError, ConnectionError, TimeoutError, OSError) as e:
         _err_console.print(f"[bold red]Failed to load dataset:[/] {e}")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
     if sample > 0:
         tasks = tasks.sample(sample, seed=seed)
     if not tasks.items:
@@ -236,7 +237,7 @@ def report_cmd(
 @app.command("list", help="List recent runs.")
 def list_cmd(
     limit: int = typer.Option(50, "--limit", "-n", help="Max number of runs to show."),
-    task_id: Optional[str] = typer.Option(None, "--task-id", help="Filter by task ID."),
+    task_id: str | None = typer.Option(None, "--task-id", help="Filter by task ID."),
 ) -> None:
     storage = JSONLStorage()
     runs = storage.list_runs(task_id=task_id)
@@ -250,7 +251,7 @@ def list_cmd(
 
 @app.command("evaluate", help="(Re-)evaluate existing run(s) by ID or all.")
 def evaluate_cmd(
-    run_ids: Optional[list[str]] = typer.Argument(None, help="One or more run IDs. If omitted, evaluate ALL."),
+    run_ids: list[str] | None = typer.Argument(None, help="One or more run IDs. If omitted, evaluate ALL."),
 ) -> None:
     storage = JSONLStorage()
     engine = EvaluationEngine(storage=storage)
@@ -323,9 +324,9 @@ def _print_run_paths(run_id: str) -> None:
 def compare_cmd(
     dataset: Path = typer.Argument(..., exists=True, dir_okay=False, help="Path to dataset JSONL."),
     agent_a: str = typer.Option("react", "--agent-a", help="Agent type for A."),
-    model_a: Optional[str] = typer.Option(None, "--model-a", help="Model for agent A."),
+    model_a: str | None = typer.Option(None, "--model-a", help="Model for agent A."),
     agent_b: str = typer.Option("react", "--agent-b", help="Agent type for B."),
-    model_b: Optional[str] = typer.Option(None, "--model-b", help="Model for agent B."),
+    model_b: str | None = typer.Option(None, "--model-b", help="Model for agent B."),
     sample: int = typer.Option(0, "--sample", "-n", help="Randomly sample N tasks."),
     report_html: bool = typer.Option(False, "--report-html", help="Generate HTML comparison report."),
 ) -> None:
@@ -348,7 +349,7 @@ def compare_cmd(
     )
 
     # Print summary
-    console.print(f"\n[bold green]=== A/B Comparison Result ===[/bold green]")
+    console.print("\n[bold green]=== A/B Comparison Result ===[/bold green]")
     console.print(json.dumps(summary.to_dict(), indent=2, ensure_ascii=False))
 
     if report_html:
@@ -364,7 +365,7 @@ def compare_cmd(
 @app.command("migrate", help="Migrate data between storage backends (JSONL → SQLite).")
 def migrate_cmd(
     source_dir: Path = typer.Argument(..., exists=True, file_okay=False, help="Source directory containing runs/ and traces/."),
-    db_path: Optional[Path] = typer.Option(None, "--db", help="Target SQLite DB path (default: ./outputs/agent_eval.db)."),
+    db_path: Path | None = typer.Option(None, "--db", help="Target SQLite DB path (default: ./outputs/agent_eval.db)."),
 ) -> None:
     trace_dir = source_dir / "traces"
     run_dir = source_dir / "runs"
@@ -389,7 +390,7 @@ def migrate_cmd(
 @app.command("config", help="View or modify the current configuration.")
 def config_cmd(
     show: bool = typer.Option(True, "--show/--no-show", help="Display current config."),
-    set_key: Optional[str] = typer.Option(None, "--set", help="Set a config value (e.g. 'llm.temperature=0.5')."),
+    set_key: str | None = typer.Option(None, "--set", help="Set a config value (e.g. 'llm.temperature=0.5')."),
 ) -> None:
     cfg = load_config()
 
@@ -401,7 +402,7 @@ def config_cmd(
         # Reload config from YAML file, modify, and write back
         import yaml
         yaml_path = Path(__file__).resolve().parent.parent.parent / "configs" / "default.yaml"
-        with open(yaml_path, "r", encoding="utf-8") as f:
+        with open(yaml_path, encoding="utf-8") as f:
             raw = yaml.safe_load(f)
         # Navigate into nested dict
         parts = key_path.split(".")
@@ -425,7 +426,7 @@ def config_cmd(
         return
 
     if show:
-        console.print(f"[bold cyan]Current Configuration:[/bold cyan]")
+        console.print("[bold cyan]Current Configuration:[/bold cyan]")
         console.print(json.dumps(cfg.model_dump(), indent=2, ensure_ascii=False))
 
 
@@ -435,8 +436,8 @@ def config_cmd(
 
 @app.command("judge", help="Run LLM-as-Judge evaluation on existing run(s).")
 def judge_cmd(
-    run_ids: Optional[list[str]] = typer.Argument(None, help="Run ID(s) to judge. If omitted, judge ALL."),
-    judge_model: Optional[str] = typer.Option(None, "--judge-model", help="Model to use as judge (default: current LLM)."),
+    run_ids: list[str] | None = typer.Argument(None, help="Run ID(s) to judge. If omitted, judge ALL."),
+    judge_model: str | None = typer.Option(None, "--judge-model", help="Model to use as judge (default: current LLM)."),
 ) -> None:
     storage = JSONLStorage()
     if not run_ids:
@@ -459,7 +460,7 @@ def judge_cmd(
             spans = storage.load_spans(rid)
             results = judge.evaluate(run, spans)
             # Persist judge results
-            for r in results:
+            for _r in results:
                 engine._persist_run_results(rid, results)
         console.print(f"[green]  ✔ Judged {rid[:12]}: {len(results)} scores[/green]")
 
@@ -478,8 +479,6 @@ def serve_cmd(
     reload: bool = typer.Option(False, "--reload", help="Enable auto-reload on code changes."),
     open_browser: bool = typer.Option(True, "--no-open/--open", help="Auto-open browser."),
 ) -> None:
-    import subprocess
-    import sys
     import webbrowser
 
     from agent_eval import __version__
@@ -513,7 +512,7 @@ def serve_cmd(
         )
     except ImportError:
         _err_console.print("[red]uvicorn not installed. Run: pip install uvicorn[standard][/]")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from None
 
 
 # ============================================================
@@ -549,6 +548,265 @@ def compare_annotations_cmd(
     if save_report:
         path = generate_comparison_report(storage)
         console.print(f"\n[green]📊 Comparison report saved:[/] {path}")
+
+
+# ============================================================
+# agent token-analysis (Token Efficiency Analysis)
+# ============================================================
+
+@app.command("token-analysis", help="Analyze token efficiency (redundancy, bloat, context usage).")
+def token_analysis_cmd(
+    run_id: str | None = typer.Option(None, "--run-id", help="Analyse a single run ID."),
+    context_window: int | None = typer.Option(
+        None, "--context-window", "-w", help="Override model context window (default: read from config)."
+    ),
+) -> None:
+    storage = JSONLStorage()
+
+    if run_id:
+        run = storage.load_run(run_id)
+        if run is None:
+            _err_console.print(f"[bold red]Run ID not found:[/] {run_id}")
+            raise typer.Exit(code=1)
+        spans = storage.load_spans(run_id)
+        analysis = analyze_run(run, spans, context_window=context_window)
+        _print_single_run_token_analysis(analysis)
+        return
+
+    # Batch mode: analyse all runs
+    batch = analyze_batch(storage, context_window=context_window)
+    if not batch.runs:
+        console.print("[yellow]No runs found in storage.[/]")
+        raise typer.Exit(code=0)
+    _print_batch_token_analysis(batch)
+
+
+def _print_single_run_token_analysis(a) -> None:  # type: ignore[no-untyped-def]
+    """Print a single RunTokenAnalysis using Rich."""
+    from rich.table import Table
+
+    table = Table(title=f"Token Efficiency — {a.run_id}", show_header=True, header_style="bold cyan")
+    table.add_column("Metric")
+    table.add_column("Value", justify="right")
+
+    table.add_row("Prompt tokens", f"{a.prompt_tokens:,}")
+    table.add_row("Completion tokens", f"{a.completion_tokens:,}")
+    table.add_row("Total tokens", f"{a.total_tokens:,}")
+    table.add_row("Final answer chars", f"{a.final_answer_chars:,}")
+    table.add_row("Chars / completion token", f"{a.chars_per_completion_token:.2f}")
+    table.add_row("Duplicate prompt tokens", f"{a.duplicate_prompt_tokens:,}")
+    table.add_row("Redundancy ratio", f"{a.redundancy_ratio:.1%}")
+    table.add_row("Context window", f"{a.context_window:,}")
+    table.add_row("Context used", f"{a.context_used_pct:.1f}%")
+    table.add_row("System prompt tokens", f"{a.system_prompt_tokens:,}")
+    table.add_row("Conversation bloat ratio", f"{a.conversation_bloat_ratio:.1%}")
+
+    console.print(table)
+
+    if a.flags:
+        console.print("\n[bold yellow]⚠ Flags:[/bold yellow]")
+        for flag in a.flags:
+            console.print(f"  • [yellow]{flag}[/yellow]")
+    else:
+        console.print("\n[green]✔ No issues detected.[/green]")
+
+
+def _print_batch_token_analysis(batch) -> None:  # type: ignore[no-untyped-def]
+    """Print a BatchTokenAnalysis: per-run table + aggregate KPI card."""
+    from rich.table import Table
+
+    # Per-run table
+    table = Table(title="Per-Run Token Efficiency", show_header=True, header_style="bold cyan")
+    table.add_column("Run ID")
+    table.add_column("Prompt", justify="right")
+    table.add_column("Redundancy", justify="right")
+    table.add_column("Ctx Used", justify="right")
+    table.add_column("Chars/Token", justify="right")
+    table.add_column("Dup Tokens", justify="right")
+    table.add_column("Flags")
+
+    for a in batch.runs:
+        flags_str = ",".join(a.flags) if a.flags else "—"
+        table.add_row(
+            a.run_id[:16],
+            f"{a.prompt_tokens:,}",
+            f"{a.redundancy_ratio:.1%}",
+            f"{a.context_used_pct:.1f}%",
+            f"{a.chars_per_completion_token:.2f}",
+            f"{a.duplicate_prompt_tokens:,}",
+            flags_str,
+        )
+    console.print(table)
+
+    # KPI card
+    console.print("\n[bold green]=== Token Efficiency Summary ===[/bold green]")
+    kpi = Table.grid(padding=(1, 2))
+    kpi.add_column(style="dim")
+    kpi.add_column(justify="right", style="bold")
+    kpi.add_row("Runs analysed", f"{len(batch.runs)}")
+    kpi.add_row("Avg redundancy", f"{batch.avg_redundancy_ratio:.1%}")
+    kpi.add_row("Avg context used", f"{batch.avg_context_used_pct:.1f}%")
+    kpi.add_row("Avg chars/token", f"{batch.avg_chars_per_token:.2f}")
+    kpi.add_row("Total duplicate tokens", f"{batch.total_duplicate_tokens:,}")
+    console.print(kpi)
+
+    if batch.top_redundant_runs:
+        console.print("\n[bold yellow]Top 5 Most Redundant Runs:[/bold yellow]")
+        for rid, ratio in batch.top_redundant_runs[:5]:
+            console.print(f"  • {rid[:16]} — {ratio:.1%}")
+
+    if batch.recommendations:
+        console.print("\n[bold cyan]💡 Recommendations:[/bold cyan]")
+        for rec in batch.recommendations:
+            console.print(f"  • {rec}")
+
+
+# ============================================================
+# agent baseline-save (save current batch as regression baseline)
+# ============================================================
+
+@app.command("baseline-save", help="Save current run(s) as a regression baseline.")
+def baseline_save_cmd(
+    name: str = typer.Option(..., "--name", "-n", help="Human-friendly baseline label (e.g. 'v1.0 release')."),
+    run_ids: str | None = typer.Option(None, "--run-ids", help="Comma-separated run IDs. If omitted, save ALL runs."),
+    dataset_id: str | None = typer.Option(None, "--dataset-id", help="Optional source dataset identifier."),
+    agent_name: str | None = typer.Option(None, "--agent-name", help="Optional agent/model snapshot label."),
+) -> None:
+    from agent_eval.evaluation.baseline import save_baseline
+
+    storage = JSONLStorage()
+    engine = EvaluationEngine(storage=storage)
+
+    resolved_ids: list[str] | None = None
+    if run_ids:
+        resolved_ids = [rid.strip() for rid in run_ids.split(",") if rid.strip()]
+
+    try:
+        with console.status("[cyan]Evaluating runs and saving baseline...[/cyan]"):
+            baseline_id = save_baseline(
+                engine=engine,
+                run_ids=resolved_ids,
+                name=name,
+                dataset_id=dataset_id,
+                agent_name=agent_name,
+                storage=storage,
+            )
+    except ValueError as e:
+        _err_console.print(f"[yellow]{e}[/yellow]")
+        raise typer.Exit(code=1) from e
+
+    console.print(f"[green]✔ Baseline saved:[/] [bold]{baseline_id}[/]")
+    console.print(f"  Name: {name}")
+    console.print(f"  Runs: {len(resolved_ids) if resolved_ids else len(storage.list_runs())}")
+
+
+# ============================================================
+# agent baseline-compare (compare current runs vs saved baseline)
+# ============================================================
+
+@app.command("baseline-compare", help="Compare current runs against a saved regression baseline.")
+def baseline_compare_cmd(
+    baseline_id: str = typer.Option(..., "--baseline-id", "-b", help="Baseline ID to compare against."),
+    run_ids: str | None = typer.Option(None, "--run-ids", help="Comma-separated current run IDs (default=ALL)."),
+) -> None:
+    from agent_eval.evaluation.baseline import compare_to_baseline, load_baseline
+
+    storage = JSONLStorage()
+    engine = EvaluationEngine(storage=storage)
+
+    try:
+        baseline = load_baseline(baseline_id)
+    except FileNotFoundError as e:
+        _err_console.print(f"[bold red]{e}[/bold red]")
+        raise typer.Exit(code=1) from e
+
+    resolved_ids: list[str] | None = None
+    if run_ids:
+        resolved_ids = [rid.strip() for rid in run_ids.split(",") if rid.strip()]
+
+    with console.status("[cyan]Comparing runs against baseline...[/cyan]"):
+        result = compare_to_baseline(
+            baseline_id=baseline_id,
+            current_run_ids=resolved_ids,
+            engine=engine,
+            storage=storage,
+        )
+
+    # --- Render verdict panel ---
+    has_regression = bool(result["regressions"])
+    verdict_title = "⚠ Regression Detected" if has_regression else "✓ No Regression"
+    verdict_color = "red bold" if has_regression else "green bold"
+
+    baseline_sr = baseline.summary.get("overall_success_rate", 0.0)
+    current_sr = round(baseline_sr + result["overall_delta"], 4)
+
+    panel_lines = [
+        f"[dim]Baseline:[/] {baseline.name} ([cyan]{baseline.baseline_id}[/cyan])  ({result['baseline_run_count']} runs)",
+        f"[dim]Current :[/] {result['current_run_count']} run(s)",
+        f"[dim]Baseline success rate :[/] {baseline_sr:.2%}",
+        f"[dim]Current  success rate :[/] {current_sr:.2%}",
+        f"[dim]Overall delta          :[/] [{'red' if result['overall_delta'] < 0 else 'green'}]{result['overall_delta'] * 100:+.2f} pp[/]",
+        "",
+        result["note"],
+    ]
+    console.print(Panel("\n".join(panel_lines), title=f"[{verdict_color}]{verdict_title}[/{verdict_color}]", border_style="yellow"))
+
+    # --- Dimension delta table ---
+    deltas = result["dimension_deltas"]
+    if deltas:
+        table = Table(title="Per-dimension delta (current − baseline)")
+        table.add_column("Dimension", style="cyan", no_wrap=True)
+        table.add_column("Delta", justify="right", no_wrap=True)
+        table.add_column("Status", no_wrap=True)
+
+        for dim_name in sorted(deltas):
+            d = deltas[dim_name]
+            if d < -1e-6:
+                status = "[red]regressed[/red]"
+            elif d > 1e-6:
+                status = "[green]improved[/green]"
+            else:
+                status = "[dim]unchanged[/dim]"
+            table.add_row(
+                dim_name,
+                f"{d * 100:+.2f} pp",
+                status,
+            )
+        console.print(table)
+    else:
+        console.print("[dim]No dimension-level data to compare.[/dim]")
+
+
+# ============================================================
+# agent baseline-list (list saved baselines)
+# ============================================================
+
+@app.command("baseline-list", help="List all saved regression baselines.")
+def baseline_list_cmd() -> None:
+    from agent_eval.evaluation.baseline import list_baselines
+
+    baselines = list_baselines()
+    if not baselines:
+        console.print("[yellow]No baselines saved yet.[/yellow] Use `agent baseline-save` to create one.")
+        return
+
+    table = Table(title=f"Saved baselines ({len(baselines)})")
+    table.add_column("Baseline ID", style="cyan", no_wrap=True)
+    table.add_column("Name", no_wrap=True)
+    table.add_column("Runs", justify="right")
+    table.add_column("Success Rate", justify="right")
+    table.add_column("Created At", style="dim", no_wrap=True)
+
+    for b in baselines:
+        sr = b.summary.get("overall_success_rate", 0.0)
+        table.add_row(
+            b.baseline_id,
+            b.name,
+            str(len(b.run_ids)),
+            f"{sr:.2%}",
+            b.created_at,
+        )
+    console.print(table)
 
 
 if __name__ == "__main__":

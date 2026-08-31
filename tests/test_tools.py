@@ -14,7 +14,6 @@ from agent_eval.tools.registry import (
     tool,
 )
 
-
 # ============================================================
 # @tool Decorator Tests
 # ============================================================
@@ -289,7 +288,7 @@ class TestToolRegistry:
 
     def test_callback_on_error(self):
         """Error callback should fire when a raw tool raises an exception."""
-        from agent_eval.tools.registry import BaseTool, ToolResult
+        from agent_eval.tools.registry import BaseTool
 
         class FailTool(BaseTool):
             name = "fail_tool"

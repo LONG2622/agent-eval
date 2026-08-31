@@ -26,20 +26,38 @@ class JsonFormatter(logging.Formatter):
 
 def setup_logger(
     name: str = "agent_eval",
-    level: int = logging.INFO,
+    level: int | None = None,
     log_file: str | Path | None = None,
     json_output: bool = False,
 ) -> logging.Logger:
     """Configure and return a logger instance.
 
+    Two modes:
+
+    - **Root logger** (dotted-free name, e.g. ``agent_eval``): attaches console
+      (+ optional file) handlers. The CLI's ``--verbose / --json-logs /
+      --log-file`` options configure this one via ``setup_logger()``.
+    - **Child logger** (dotted name, e.g. ``agent_eval.cli``): attaches no
+      handlers and keeps ``propagate=True`` so records bubble up to the root
+      logger and inherit its level/format/file settings.
+
     Args:
         name: Logger name.
-        level: Logging level.
-        log_file: Optional file path to also write logs.
+        level: Logging level (root mode only; children inherit from parent).
+        log_file: Optional file path to also write logs (root mode only).
         json_output: If True, output JSON lines (useful for pipelines).
     """
     logger = logging.getLogger(name)
-    logger.setLevel(level)
+
+    if "." in name:
+        # Child logger: bubble up to the package root logger.
+        logger.handlers.clear()
+        logger.setLevel(logging.NOTSET)  # inherit effective level from parent
+        logger.propagate = True
+        return logger
+
+    # Root logger: attach handlers.
+    logger.setLevel(level if level is not None else logging.INFO)
     logger.handlers.clear()
 
     console_handler = logging.StreamHandler(sys.stdout)

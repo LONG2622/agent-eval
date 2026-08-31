@@ -2,11 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
-
 from agent_eval.evaluation.error_classifier import (
-    CATEGORIES,
-    UNKNOWN,
     ClassifiedError,
     ErrorCategory,
     ErrorSummary,
@@ -15,7 +11,6 @@ from agent_eval.evaluation.error_classifier import (
     format_summary_text,
 )
 from agent_eval.trace.models import RunRecord, RunStatus
-
 
 # ============================================================
 # ErrorCategory Tests

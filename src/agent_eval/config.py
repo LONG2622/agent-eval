@@ -178,7 +178,7 @@ def load_config(config_path: str | Path | None = None, force_reload: bool = Fals
         return _config_instance
 
     path = Path(config_path) if config_path else _DEFAULT_CONFIG_PATH
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         raw = yaml.safe_load(f) or {}
 
     substituted = _walk_and_substitute(raw)

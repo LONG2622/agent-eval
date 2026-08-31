@@ -7,10 +7,11 @@ import json
 import re
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
-from pydantic import create_model, ValidationError
+from pydantic import ValidationError, create_model
 
 from agent_eval.logger import setup_logger
 
@@ -89,16 +90,16 @@ class ToolCallContext:
     extra: dict[str, Any] = field(default_factory=dict)
 
 
-class ToolCallback(ABC):
+class ToolCallback(ABC):  # noqa: B024 - marker base with optional hooks
     """Hook for tracing tool invocations."""
 
-    def on_tool_start(self, ctx: ToolCallContext) -> None:
+    def on_tool_start(self, ctx: ToolCallContext) -> None:  # noqa: B027
         pass
 
-    def on_tool_end(self, ctx: ToolCallContext) -> None:
+    def on_tool_end(self, ctx: ToolCallContext) -> None:  # noqa: B027
         pass
 
-    def on_tool_error(self, ctx: ToolCallContext) -> None:
+    def on_tool_error(self, ctx: ToolCallContext) -> None:  # noqa: B027
         pass
 
 

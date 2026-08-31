@@ -6,7 +6,6 @@ import json
 import logging
 import re
 from collections import Counter
-from typing import Any
 
 from agent_eval.config import load_config
 from agent_eval.evaluation.base import (

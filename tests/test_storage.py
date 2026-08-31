@@ -2,17 +2,12 @@
 
 from __future__ import annotations
 
-import json
-
-import pytest
-
 from agent_eval.trace.models import (
     AnnotationRecord,
     RunRecord,
     RunStatus,
     Span,
     SpanType,
-    TokenUsage,
 )
 from agent_eval.trace.storage import JSONLStorage
 
@@ -20,7 +15,7 @@ from agent_eval.trace.storage import JSONLStorage
 class TestJSONLStorage:
     def test_init_creates_directories(self, tmp_output_dir):
         """Storage should create trace/run/annotation dirs on init."""
-        storage = JSONLStorage(
+        JSONLStorage(
             trace_dir=tmp_output_dir / "traces",
             run_dir=tmp_output_dir / "runs",
             annotation_dir=tmp_output_dir / "annotations",

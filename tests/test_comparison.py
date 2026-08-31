@@ -14,11 +14,7 @@ from agent_eval.report.comparison_report import (
 )
 from agent_eval.trace.models import (
     AnnotationRecord,
-    RunRecord,
-    RunStatus,
-    TokenUsage,
 )
-
 
 # ============================================================
 # Helper Functions Tests
