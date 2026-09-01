@@ -23,8 +23,15 @@ class OpenAIProvider(LLMProvider):
         api_key: str | None = None,
         base_url: str | None = None,
     ) -> None:
-        self._default_api_key = api_key or os.environ.get("OPENAI_API_KEY", "")
-        self._default_base_url = base_url or os.environ.get("OPENAI_BASE_URL")
+        # Last-resort defaults when caller doesn't pass explicit credentials AND
+        # the model name isn't found in the registered profile list. Prefer TJU
+        # (the project's always-on default), then fall back to any generic env vars.
+        default_key = api_key or os.environ.get("TJU_API_KEY", "")
+        if not default_key:
+            default_key = os.environ.get("OPENAI_API_KEY", "")
+        default_url = base_url or os.environ.get("TJU_BASE_URL") or os.environ.get("OPENAI_BASE_URL")
+        self._default_api_key = default_key
+        self._default_base_url = default_url
         # Cache of {cache_key: OpenAI client} for quick reuse across models/endpoints
         self._clients: dict[str, Any] = {}
 

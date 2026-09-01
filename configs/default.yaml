@@ -4,7 +4,7 @@ agent:
   step_timeout_seconds: ${STEP_TIMEOUT_SECONDS:-60}
 llm:
   default_provider: openai
-  default_model: ${OPENAI_MODEL:-tju-llm}
+  default_model: ${LLM_DEFAULT_MODEL:-tju-llm}
   temperature: 0.8
   max_tokens: ${LLM_MAX_TOKENS:-2000}
   retry:

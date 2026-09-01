@@ -113,27 +113,28 @@ pip install -e .
 cp .env.example .env
 ```
 
-编辑 `.env`，填入你的 API 信息：
+编辑 `.env`，填入你的 API 信息（3 个模型可选，默认用天大）：
 
 ```env
-OPENAI_API_KEY=your-api-key
-OPENAI_BASE_URL=https://api.openai.com/v1      # 或你的兼容 API 地址
-OPENAI_MODEL=gpt-4o-mini                        # 或你的模型名
-```
+LLM_DEFAULT_MODEL=tju-llm
 
-支持多模型配置（在 `.env` 中添加）：
-
-```env
 # 天津大学 LLM（中文友好，支持 Function Calling）
 TJU_API_KEY=your-tju-key
 TJU_BASE_URL=https://ai.tju.edu.cn/api/v3/
 TJU_MODEL_NAME=tju-llm
 
-# NVIDIA Llama 3.1 70B（英文推理能力强）
+# NVIDIA DeepSeek V4 Pro（强推理 + 代码 + 中文，支持 thinking）
 NVIDIA_LLAMA_API_KEY=your-nvidia-key
 NVIDIA_LLAMA_BASE_URL=https://integrate.api.nvidia.com/v1/
-NVIDIA_LLAMA_MODEL_NAME=meta/llama-3.1-70b-instruct
+NVIDIA_LLAMA_MODEL_NAME=deepseek-ai/deepseek-v4-pro-0813
+
+# NVIDIA Moonshot Kimi K3（多模态 + 长上下文 + 中文推理，不支持 FC，自动降级 Scratchpad）
+NVIDIA_QWEN_API_KEY=your-nvidia-key
+NVIDIA_QWEN_BASE_URL=https://integrate.api.nvidia.com/v1/
+NVIDIA_QWEN_MODEL_NAME=moonshotai/kimi-k3
 ```
+
+> 切换默认模型只需改 `LLM_DEFAULT_MODEL` 为上述任一模型名即可。
 
 ### 3. 运行单任务
 
@@ -346,6 +347,7 @@ Agent/
 ├── examples/
 │   └── sample_tasks.jsonl        # 示例任务（50 条，7 类别，3 档难度）
 ├── src/agent_eval/
+│   ├── __main__.py               # python -m agent_eval 入口
 │   ├── cli.py                    # CLI 入口（16 条命令）
 │   ├── config.py                 # Pydantic 配置模型 + 环境变量替换 + 评估阈值配置
 │   ├── logger.py                 # 结构化日志（根/子 logger 分层，JSON / 控制台）

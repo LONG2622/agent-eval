@@ -188,14 +188,15 @@ def load_config(config_path: str | Path | None = None, force_reload: bool = Fals
     _config_instance.llm.model_profiles = _build_model_profiles_from_env()
 
     # Override default_model in case default.yaml used a different placeholder
-    env_default = os.environ.get("LLM_DEFAULT_MODEL") or os.environ.get("OPENAI_MODEL")
+    env_default = os.environ.get("LLM_DEFAULT_MODEL")
     if env_default:
         _config_instance.llm.default_model = env_default
-    # Also: if OPENAI_* env vars are set but no profile matches default_model,
-    # create a fallback profile so the default model is always usable
+    # Also: if explicit env vars are set but no profile matches default_model,
+    # try TJU credentials as the last-resort fallback so the default model is
+    # always usable (when LLM_DEFAULT_MODEL matches an explicitly configured one).
     if not _find_profile_for_model(_config_instance.llm.model_profiles, _config_instance.llm.default_model):
-        fallback_key = os.environ.get("OPENAI_API_KEY", "")
-        fallback_url = os.environ.get("OPENAI_BASE_URL", "")
+        fallback_key = os.environ.get("TJU_API_KEY", "")
+        fallback_url = os.environ.get("TJU_BASE_URL", "")
         if fallback_key or fallback_url:
             _config_instance.llm.model_profiles.insert(
                 0,
@@ -205,7 +206,7 @@ def load_config(config_path: str | Path | None = None, force_reload: bool = Fals
                     model=_config_instance.llm.default_model,
                     api_key=fallback_key,
                     base_url=fallback_url,
-                    description="Default model from OPENAI_* env vars",
+                    description="Default model — credentials auto-routed to TJU profile",
                 ),
             )
 
@@ -238,7 +239,7 @@ def _build_model_profiles_from_env() -> list[LLMModelProfile]:
             )
         )
 
-    # 2) NVIDIA A: Llama 3.1 70B
+    # 2) NVIDIA A: DeepSeek V4 Pro (strong reasoning, code, Chinese, supports streaming thinking)
     nvk1_key = os.environ.get("NVIDIA_LLAMA_API_KEY", "")
     nvk1_url = os.environ.get("NVIDIA_LLAMA_BASE_URL", "")
     nvk1_model = os.environ.get("NVIDIA_LLAMA_MODEL_NAME", "")
@@ -246,17 +247,17 @@ def _build_model_profiles_from_env() -> list[LLMModelProfile]:
         profiles.append(
             LLMModelProfile(
                 id=nvk1_model,
-                display_name="NVIDIA: Meta Llama 3.1 70B Instruct",
+                display_name="NVIDIA: DeepSeek V4 Pro 0813",
                 model=nvk1_model,
                 api_key=nvk1_key,
                 base_url=nvk1_url,
-                description="英文推理能力强，中文能力有限",
+                description="强推理 / 代码 / 中文俱佳，支持 extended thinking，适合复杂任务",
                 supports_function_calling=True,
-                supports_chinese=False,
+                supports_chinese=True,
             )
         )
 
-    # 3) NVIDIA B: Mistral Nemotron (Chinese-friendly, no FC)
+    # 3) NVIDIA B: Moonshot Kimi K3 (multimodal / Vision / long context / Chinese reasoning)
     nvk2_key = os.environ.get("NVIDIA_QWEN_API_KEY", "")
     nvk2_url = os.environ.get("NVIDIA_QWEN_BASE_URL", "")
     nvk2_model = os.environ.get("NVIDIA_QWEN_MODEL_NAME", "")
@@ -264,11 +265,11 @@ def _build_model_profiles_from_env() -> list[LLMModelProfile]:
         profiles.append(
             LLMModelProfile(
                 id=nvk2_model,
-                display_name="NVIDIA: Mistral Nemotron",
+                display_name="NVIDIA: Moonshot Kimi K3 (多模态)",
                 model=nvk2_model,
                 api_key=nvk2_key,
                 base_url=nvk2_url,
-                description="中文友好 + 推理能力强，不支持 Function Calling，Agent 自动降级到 Scratchpad 模式",
+                description="中文长上下文推理强，支持 Vision 图片输入，Function Calling 待验证（Agent 自动降级 Scratchpad）",
                 supports_function_calling=False,
                 supports_chinese=True,
             )
